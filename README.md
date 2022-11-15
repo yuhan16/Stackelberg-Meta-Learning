@@ -1,9 +1,53 @@
 # sg-meta
-This repo is for sg meta learning project
+This repo is for Stackelberg meta-learning project. The underlying application is UAV guiding UGV.
 
 
-## Code specifications
-- One global parameter file, which defines type-related information.
+## File Structure Specifications
+- `data/`: data directory. Store necessary data including plots and key training data for reference.
+- `logs/`: log directory. Stroe training log for diagnosis.
+- `requirements.txt`: required python packeges for the project. Installed with `pip`.
+- Python scripts
+
+### Python Scripts
+The following scripts are used for different purposes:
+- `param_lqg.py`: definition of problem parameters.
+- `utils_lqg.py`: definition of utility functions for executing the algorithm.
+- `main_meta`: main script for sg meta-learning algorithms.
+- `misc_test`: test scripts for different function testing.
+- `plot_fig.py`: functions to plot figures.
+
+(xxx)
+- `test_gendata`: generates and stores uniformly sampled BR data in `data_meta`
+- `test_mpc`: run MPC and online BR updating; stores data in `data_mpc`
+- `test_nometa`: run online BR updating with open loop control; stores data in `data_nometa`
+- `test_noguide`: run no guidance (myopic planning); stores data in `data_noguide`
+
+### data directory
+We have following sub directories in `data/`:
+- `plots/`: stores simulation plots.
+- `data_meta/`: stores meta learning related as well as pre-sampled uniform BR data
+  - `data_meta/scenario(x)/`: stores related data for scenario x, including pre-sampled BR data and adapted BR model.
+- `data_nometa`: stores no meta learning related data.
+- `data_noguide`: stores no guidance related data.
+- `data_mpc`: stores mpc related data.
+
+### log directory
+The log directory has the same structure as `data/`.
+
+
+## Coding Specifications
+- BR data are organized into numpy array. `D[i,:] = [x, a, br]`
+- Trajectory is stored in a 2d numpy array with axis0 as time index. `x_traj[t, :] = x_t`
+- Use a list to store type-related quantity. `br_list[i]` is the adapted meta model (an NN) for type `i` follower.
+- Trajectories have different time dimension. 
+  - state trajectory `x_traj` has dimension `T+1`. `x_0, ..., x_T`
+  - control input trajectories `a_traj` and `b_traj` have dimension `T`. `a_0, ..., a_{T-1}`
+  - costate trajectory `lam_traj` has dimension `T`. `lam_1, ..., lam_T`
+- Use `brnet` to store parameter value only. Its gradient `.grad` is useless.
+
+
+### Function Specifications
+- Use one global parameter file, which defines type-related information.
 - Four classes to implement different functions: `Leader`, `Follower`, `BRNet`, `Meta`.
   - `Leader`: compute leader's objective; solve leader's decision problem.
   - `Follower`: compute follower's objective; compute follower's best response.
@@ -12,20 +56,6 @@ This repo is for sg meta learning project
 
 Leader's obj parameter `alp`. Follower's obj parameter `beta`.
 
-We use numpy array to store trajectories. For example, x_traj[t, :] represents x_t.
-We use different variables to represent trajectories. For example, x_traj and a_traj
-- `x_traj` has dimension T+1, `x_0, ..., x_T`. `a_traj` and `b_traj` have dimension T, `a_0, ..., a_{T-1}`.
-
-We use numpy array to store samples. For example, x_samp[i, :] represents i-th sample in x.
-We use different variables to represent samples. For example, x_samp and a_samp.
-We need to convert to tensor for pytorch computation if necessary.
-
-Use 1d array for computation when there is no trajectory requirement.
-
-In meta-learning, `brnet` only stores parameter value. `.grad` is useless.
-The NN in `br_list` stores the same parameter as `brnet` and updated gradient.
-
-## function structure
 Meta:
 - `sample_task_theta`
   - `sample_task_theta_traj`
@@ -42,5 +72,12 @@ Leader:
   - `xxx`
 
 
-## Notice
-- When writing constraints, do not use for loop. Write all constraints as a whole. This is because the computer needs a function to compute constraints in each iteration. If using for loop, we need to write N different function definitions explicitly.
+## Installation Instructions
+We use [Pytorch](https://pytorch.org/) to train the neural network model in our framework. First, create a virtual environment with python virtulenv module.
+
+Second, install required python packages using `pip` and provided `requirements.txt`:
+```bash
+(venv-name)$ pip install -r requirements.txt
+```
+
+Then you are ready to run all the scripts.
