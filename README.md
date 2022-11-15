@@ -6,7 +6,7 @@ This repo is for Stackelberg meta-learning project. The underlying application i
 - `data/`: data directory. Store necessary data including plots and key training data for reference.
 - `logs/`: log directory. Stroe training log for diagnosis.
 - `requirements.txt`: required python packeges for the project. Installed with `pip`.
-- Python scripts
+- Python scripts.
 
 ### Python Scripts
 The following scripts are used for different purposes:
@@ -73,10 +73,16 @@ Leader:
 
 
 ## Installation Instructions
-We use [Pytorch](https://pytorch.org/) to train the neural network model in our framework. First, create a virtual environment with python virtulenv module.
+We use [Pytorch](https://pytorch.org/) to train the neural network model in our framework. 
 
-Second, install required python packages using `pip` and provided `requirements.txt`:
+First, create a virtual environment with python virtulenv module.
 ```bash
+$ python -m venv <venv-name>
+```
+
+Second, enter the created virtual environment and install required python packages using `pip` and provided `requirements.txt`:
+```bash
+$ source /path_to_venv-name/bin/activate    # virtual environment 
 (venv-name)$ pip install -r requirements.txt
 ```
 
