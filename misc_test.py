@@ -10,7 +10,7 @@ from os.path import exists
 
 
 def test1():     # basic function test
-    f1 = Follower(0)
+    f1 = Follower(0, 0)
     x = np.array([3,3, 2.2,2.2,0.])
     a = np.array([0.1, 0.1])
     b_opt = f1.get_br(x, a)
@@ -39,16 +39,17 @@ def test1():     # basic function test
     print(gx, ga)
 
 def test2():     # leader's cost function and OC computation
+    scn, theta = 0, 0
     meta = Meta()
     brnet = BRNet()
     leader = Leader()
-    leader.read_task_info(0)
+    leader.read_task_info(scn, theta)
 
     x_traj, a_traj = leader.solve_oc(brnet)
     oc_cost = leader.obj_oc(x_traj, a_traj)
     print(oc_cost)
 
-    follower = Follower(0)
+    follower = Follower(scn, theta)
     task_data = meta.sample_task_theta(follower, x_traj, a_traj, N=100)
     br_cost = leader.obj_br(brnet, task_data)
     print(br_cost)
@@ -59,7 +60,7 @@ def test2():     # leader's cost function and OC computation
     print(br_grad.get_grad())
 
     b2 = meta.update_model_theta(leader, brnet, task_data, a_traj)
-    np.save('taskdata.npy', meta.list2array(task_data))
+    np.save('taskdata.npy', task_data)
     np.save('xtraj.npy', x_traj)
     np.save('atraj.npy', a_traj)
 
@@ -122,32 +123,20 @@ def test4():    # brnet test
         print(n,p[n])
         print(dp[n])
 
-def test5():    # task sampling test
-    brnet = BRNet()
-    meta = Meta()
+def test5():    # sampling test
+    scn, theta = 0, 0
     leader = Leader()
+    meta = Meta()
+    ff = Follower(scn, theta)
+    leader.read_task_info(scn, theta)
+    task_data = meta.sample_task_theta_uniform(ff, N=10)
+    print(task_data)
+
+    x_traj = np.random.rand(leader.dimT+1, leader.dimxA+leader.dimxB)
+    a_traj = np.random.rand(leader.dimT, leader.dima)
+    task_data = meta.sample_task_theta(ff, x_traj, a_traj, N=10)
+    print(task_data)
     
-    # sample and store random task data offline for future training
-    leader.read_task_info(scn=0, theta=0)
-    f0 = Follower(0)
-    task_data = meta.sample_task_theta_uniform(f0, N=10000)
-    np.save('data/task'+str(0)+'_uniform.npy', task_data)
-
-    leader.read_task_info(1)
-    f1 = Follower(1)
-    task_data = meta.sample_task_theta_uniform(f1, N=10000)
-    np.save('data/task'+str(1)+'_uniform.npy', task_data)
-
-    leader.read_task_info(2)
-    f2 = Follower(2)
-    task_data = meta.sample_task_theta_uniform(f2, N=10000)
-    np.save('data/task'+str(2)+'_uniform.npy', task_data)
-
-    leader.read_task_info(3)
-    f3 = Follower(3)
-    task_data = meta.sample_task_theta_uniform(f3, N=10000)
-    np.save('data/task'+str(3)+'_uniform.npy', task_data)
-
 
 def test6():    # opt solver test for single agent 0/1
     aux = Auxilary()
@@ -166,7 +155,7 @@ def test6():    # opt solver test for single agent 0/1
     x_traj, a_traj = leader.solve_oc(brnet)
     pltutil.plot_trajectory(x_traj)
     #f1 = Follower(1)
-    #x_gd, b_gd = f1.get_ground_truth(x_traj[0,:], a_traj)
+    #x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
     #pltutil.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
     #print(leader.obj_oc(x_gd, a_traj))
     
@@ -181,7 +170,7 @@ def test7():    # opt solver test for single agent, multiple times
     pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)
-    f1 = Follower(1)
+    f1 = Follower(0, 1)
 
     task_data = np.load('data/task1_uniform.npy')
     if exists('data/brnet1_init.pth'):
@@ -193,7 +182,7 @@ def test7():    # opt solver test for single agent, multiple times
     for iter in range(10):
         x_traj, a_traj = leader.solve_oc(brnet)
         pltutil.plot_trajectory(x_traj, real_pB=None)
-        x_gd, b_gd = f1.get_ground_truth(x_traj[0,:], a_traj)
+        x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
         pltutil.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
         print('iter {}, guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )
 
@@ -209,7 +198,7 @@ def test8():    # test solve_oc1 function, test content is the same as test7()
     pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)   # theta = -1 for testing
-    ff = Follower(1)
+    ff = Follower(0, theta=1)
 
     fname = 'data/task_test_uniform.npy'
     fname = 'data/task1_uniform.npy' 
@@ -241,7 +230,7 @@ def test8():    # test solve_oc1 function, test content is the same as test7()
 
         # plot things
         for i in range(len(x_traj_list)):
-            x_gd, b_gd = ff.get_ground_truth(x_traj_list[i][0,:], a_traj_list[i])
+            x_gd, b_gd = ff.get_interactive_traj(x_traj_list[i][0,:], a_traj_list[i])
             x_sm, b_sm = leader.shooting_simulate_traj(brnet, a_traj_list[i])
             pltutil.plot_trajectory(x_traj_list[i], real_pB=x_gd[:, 2:4], sim_pB=None)
 
@@ -256,6 +245,12 @@ def test8():    # test solve_oc1 function, test content is the same as test7()
         brnet = meta.train_brnet(brnet, new_data, N=50)
         tmp = 1
 
+def test9():    # no guidance test
+    scn, theta = 0, 0
+    ff = Follower(scn, theta)
+    x_traj, b_traj = ff.no_guidance()
+    print(x_traj, b_traj)
+
         
 def adaption(theta):    # for follower 1 for now
     aux = Auxilary()
@@ -264,7 +259,7 @@ def adaption(theta):    # for follower 1 for now
     pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)   # theta = -1 for testing
-    ff = Follower(1)
+    ff = Follower(0, theta=1)
 
     fname = 'data/task_test_uniform.npy'
     fname = 'data/task1_uniform.npy' 
@@ -283,7 +278,7 @@ def adaption(theta):    # for follower 1 for now
     
     for iter in range(10):
         x_traj, a_traj = leader.solve_oc2(brnet)
-        x_gd, b_gd = ff.get_ground_truth(x_traj[0,:], a_traj)
+        x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
         D1_theta = meta.sample_task_theta(ff, x_traj, a_traj, N=200)
         brnet_new = meta.update_model_theta(leader, brnet, D1_theta, a_traj)
 
@@ -311,7 +306,7 @@ def main():
         for i in range(len(task_sample)):
             theta = task_sample[i]
             leader.read_task_info(theta)
-            follower_theta = Follower(theta)
+            follower_theta = Follower(0, theta)
 
             # sample D1_theta and update model
             x_traj, a_traj = leader.solve_oc2(brnet)
@@ -342,10 +337,11 @@ if __name__ == '__main__':
     #main()
     #adaption(1)
     #test1()    # basic funcion test
-    #test2()    # leader's cost function and OC computation
+    test2()    # leader's cost function and OC computation
     #test3()
     #test4()     # brnet test
-    #test5()    # task sampling test
+    #test5()
     #test6()    # opt and pmp solver test for single agent, single time.
     #test7()    # opt and pmp solver test for single agent, multiple time
     #test8()     # test solve_oc1, test content same as test7()
+    #test9()     # no guidance

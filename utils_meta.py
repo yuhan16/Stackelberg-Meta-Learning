@@ -160,7 +160,7 @@ class Leader:
         # solve leader's OC problem with optimization and PMP
         x_opt, a_opt = self.opt_solver(brnet, x_init, a_init)          # directly formulate problem and use opt solver
         x_pmp, a_pmp = self.pmp_solver(brnet, x_opt, a_opt)             # use PMP to refine the trajectory
-        #x_traj, a_traj = self.pmp_solver(brnet, x_init, a_init)            # directly use PMP to find the trajectory
+        #x_traj, a_traj = self.pmp_solver(brnet, x_init, a_init)        # directly use PMP to find the trajectory
         
         print("opt_traj = {}, pmp_traj = {}".format(self.obj_oc(x_opt, a_opt), self.obj_oc(x_pmp, a_pmp)))
         if self.obj_oc(x_opt, a_opt) >= self.obj_oc(x_pmp, a_pmp):
@@ -365,10 +365,10 @@ class Leader:
         mu = self.mu
         # nu = self.nu
         X0 = np.concatenate((x_traj[1:, :].flatten(), a_traj.flatten()))            # get rid of x_traj[0, :] = x0
-        for i in range(1):  # mu up to 1000 ?
-            result = minimize(J, X0, jac=dJ, args=(mu), constraints=constr, options={'maxiter': 70, 'disp': False})
+        for i in range(1):  # iterate for different mu
+            result = minimize(J, X0, jac=dJ, args=(mu), constraints=constr, options={'maxiter': 100, 'disp': False})
             #result = minimize(J, X0, args=(mu), constraints=nonlincon)
-            print('mu = {}: {}({}) -> {}, fun = {}'.format(mu, result.success, result.status, result.message, result.fun))
+            print('mu={}: success:{}({}) -> {}, fun={}'.format(mu, result.success, result.status, result.message, result.fun))
             X0 = result.x
             mu = 10*mu
         #result = minimize(J, X0, args=(mu), constraints=nonlincon)
@@ -442,6 +442,7 @@ class Leader:
             _, jac_a = self.get_b_jac(brnet, x_t, a_t)
             Ax = self.dt * np.array([[0,0], [0,0], [np.cos(phi_t),0], [np.sin(phi_t),0], [0,1]])
             grad = 2*self.r @ a_t + lam_tp1 @ self.B1 + lam_tp1 @ Ax @ jac_a
+            return grad
 
         def H_grad(x_traj, a_traj, lam_traj):
             # aggregate the gradient of hamiltonian H_0, H_1, ..., H_{T-1}
@@ -454,7 +455,7 @@ class Leader:
         traj_len = a_init.shape[0]
         x_traj, lam_traj = np.zeros((traj_len+1,self.dimx)), np.zeros((traj_len,self.dimx))
         a_traj = np.zeros((traj_len, self.dima))
-        iter, ITER_MAX = 0, 100
+        iter, ITER_MAX = 0, 200
         x0 = x_init[0,:]
         tol = 1e-1              # gradient norm tolarance
         step = 1e-3             # GD step size
@@ -486,10 +487,9 @@ class Leader:
             
             a_pre = a_traj.copy()
             iter += 1
-            print(self.obj_oc(x_traj, a_traj))
+            print('  pmp iter {}, leader cost: {}, |dH|: {}'.format(iter, self.obj_oc(x_traj, a_traj), np.linalg.norm(dH, axis=1).max()))
         return x_traj, a_traj
 
-    
 
     def obj_oc(self, x_traj, a_traj):
         """
@@ -505,12 +505,12 @@ class Leader:
 
     def obj_br(self, brnet, task_data):
         """
-        This function computes the obj for leader's BR net training cost.
+        This function computes the obj for leader's BR data fitting cost.
         task_data is a 2d numpy array. task_data[i, :] = [x_t,a_t,b_t]
         """
         N = task_data.shape[0]
         #x_traj, a_traj, b_traj = self.list2traj(task_data)
-        x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx, self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
+        x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx: self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
         x, a, b = self.to_torch(x_traj), self.to_torch(a_traj), self.to_torch(b_traj)
         br_cost_fn = torch.nn.MSELoss(reduction='sum')        
         cost = br_cost_fn(brnet(x, a), b).item() / N
@@ -523,11 +523,11 @@ class Leader:
         """
         traj_len = a_traj.shape[0]
         # convert parameters to torch format
-        x0, xf = self.to_torch(self.x0), self.to_torch(self.xf)
-        a_traj = self.to_torch(a_traj)
-        B1, r = self.to_torch(self.B1), self.to_torch(self.r)
+        x0, xf, a_traj = self.to_torch(self.x0), self.to_torch(self.xf), self.to_torch(a_traj)
+        B1 = self.to_torch(self.B1)
         q1, qf1 = self.to_torch(self.q1), self.to_torch(self.qf1)
-        q2, qf2, r = self.to_torch(self.q2), self.to_torch(self.qf2)
+        q2, qf2 = self.to_torch(self.q2), self.to_torch(self.qf2)
+        r = self.to_torch(self.r)
         cost = 0
 
         for t in range(traj_len):
@@ -547,13 +547,13 @@ class Leader:
     
     def grad_obj_br(self, brnet, task_data):
         """
-        This function computes gradient of obj for leader's BR net training.
+        This function computes gradient of obj for leader's BR data fitting cost w.r.t. brnet parameter w.
         task_data is a 2d numpy array. task_data[i, :] = [x_t,a_t,b_t]
         The gradient stores in brnet and can be retrived by the method get_grad().
         """
         N = task_data.shape[0]
         #x_traj, a_traj, b_traj = self.list2traj(task_data)
-        x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx, self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
+        x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx: self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
         x, a, b = self.to_torch(x_traj), self.to_torch(a_traj), self.to_torch(b_traj)
         br_cost_fn = torch.nn.MSELoss(reduction='sum')        
         cost = br_cost_fn(brnet(x, a), b) / N
@@ -588,9 +588,9 @@ class Follower:
     """
     Follower class deals with follower's utils
     """
-    def __init__(self, theta, scn=0) -> None:
+    def __init__(self, scn, theta) -> None:
         self.theta = theta
-        self.scenario = scn
+        self.scn = scn
         self.dt = param.dt
         self.dimx, self.dimxA, self.dimxB = param.dimx, param.dimxA, param.dimxB
         self.dima, self.dimb = param.dima, param.dimb
@@ -646,7 +646,7 @@ class Follower:
             q_j, d_j = self.obs[j, 0: 2], self.obs[j, -1]   # get obs position and safe distance
             dist = np.linalg.norm(p - q_j)
             if dist <= d_j:
-                cost -= 1e8     # if inside obstacle, penalize 1e5
+                cost -= 1e8     # if inside obstacle, large penalty
             elif dist < 1.5*d_j:
                 cost -= np.log( (dist-d_j) / (0.5*d_j) )
             else:
@@ -740,9 +740,9 @@ class Follower:
         #print(result.jac)
         return result.x
         
-    def get_ground_truth(self, x0, a_traj): # useless 
+    def get_interactive_traj(self, x0, a_traj):
         """
-        This function generates the ground truth trajectory given x0 and leader's action trajection a_traj.
+        This function generates the follower's real interactive trajectory given x0 and leader's action trajection a_traj.
         """
         traj_len = a_traj.shape[0]
         x_traj, b_traj = np.zeros((traj_len+1, self.dimx)), np.zeros((traj_len, self.dimb))
@@ -1001,12 +1001,11 @@ class Meta:
         D = [D_traj, D_uniform], D_traj / D_uniform = kappa.
         """
         D_traj = self.sample_task_theta_traj(follower, x_traj, a_traj, N)
-        fname = 'data/task'+str(follower.theta)+'_uniform.npy'
-        if os.exists(fname):
-            np.load(fname)          # store random data offline and sample from them
+        fname = 'data/br_data/scenario' + str(follower.scn) + '/task'+str(follower.theta)+'_uniform.npy'
+        if os.path.exists(fname):
+            D_uniform = np.load(fname)          # store random data offline and sample from them
         else:
             D_uniform = self.sample_task_theta_uniform(follower, N)
-        #D_uniform = self.array2list( np.load('data/task_test_uniform.npy') )
 
         # use the ratio and shuffle the data
         n_uniform = N // (self.kappa+1)
@@ -1106,13 +1105,7 @@ class Meta:
         Return a brnet1 with updated parameter.
         """
         brnet_mid = leader.grad_obj_L(brnet, task_data, a_traj)     # brnet_mid has same (W,b) as brnet but updated (DW,db) 
-        """
-        W, b = brnet.get_data() # in fact, no need for brnet to get W and b. same values in brnet1
-        dW, db = brnet1.get_grad()
-        W, b = self.one_step_sgd_momentum(W, b, dW, db, self.mu, self.lr)
-        brnet1.set_data(W, b)
-        
-        """# new functions 
+     
         # use updated (DW,db) to update (W,b) in brnet_mid
         dp = brnet_mid.get_grad_dict()
         ITER_MAX = 2
@@ -1121,33 +1114,8 @@ class Meta:
                 for n, p in brnet_mid.named_parameters():
                     if n == 'linear4.weight' or n == 'linear4.bias':    # linear4 is constant and has no grad
                         continue
-                    p -= self.lr * (self.mu * p + dp[n])
+                    p -= self.lr * (self.mu * p + dp[n])                # one step sgd with momentum
         return brnet_mid
-
-    def one_step_sgd_momentum(self, W, b, dW, db, mu, lr):  # obsolete
-        """
-        This function performs one-step SGD with momentum given the parameter, learning rate, momentum.
-        Code snippet for model update.
-        """
-        Wtmp, btmp = {}, {}
-        if mu > 0:
-            Wtmp['linear1'] = mu * W['linear1'] + dW['linear1']
-            Wtmp['linear2'] = mu * W['linear2'] + dW['linear2']
-            Wtmp['linear3'] = mu * W['linear3'] + dW['linear3']
-            btmp['linear1'] = mu * b['linear1'] + db['linear1']
-            btmp['linear2'] = mu * b['linear2'] + db['linear2']
-            btmp['linear3'] = mu * b['linear3'] + db['linear3']
-        else:
-            Wtmp, btmp = dW, db
-        
-        #W = W - self.lr * Wtmp, b = b - self.lr * btmp
-        W['linear1'] = W['linear1'] - lr * Wtmp['linear1']
-        W['linear2'] = W['linear2'] - lr * Wtmp['linear2']
-        W['linear3'] = W['linear3'] - lr * Wtmp['linear3']
-        b['linear1'] = b['linear1'] - lr * btmp['linear1']
-        b['linear2'] = b['linear2'] - lr * btmp['linear2']
-        b['linear3'] = b['linear3'] - lr * btmp['linear3']
-        return W, b
 
     def train_brnet(self, brnet, task_data, N=100):
         """

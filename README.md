@@ -10,11 +10,11 @@ This repo is for Stackelberg meta-learning project. The underlying application i
 
 ### Python Scripts
 The following scripts are used for different purposes:
-- `param_lqg.py`: definition of problem parameters.
-- `utils_lqg.py`: definition of utility functions for executing the algorithm.
-- `main_meta`: main script for sg meta-learning algorithms.
+- `param.py`: definition of problem parameters.
+- `utils_meta.py`: definition of utility functions for executing the algorithm.
+- `main_meta`: main script for sg meta-learning algorithms and implementations for other compared algorithms.
 - `misc_test`: test scripts for different function testing.
-- `plot_fig.py`: functions to plot figures.
+- `plot_figs.py`: functions to plot figures.
 
 (xxx)
 - `test_gendata`: generates and stores uniformly sampled BR data in `data_meta`
@@ -25,8 +25,10 @@ The following scripts are used for different purposes:
 ### data directory
 We have following sub directories in `data/`:
 - `plots/`: stores simulation plots.
-- `data_meta/`: stores meta learning related as well as pre-sampled uniform BR data
-  - `data_meta/scenario(x)/`: stores related data for scenario x, including pre-sampled BR data and adapted BR model.
+- `br_data/`: stores pre-sampled uniform BR data for all scenarios.
+  - `br_data/scenario(x)/`: strores pre-sampled BR data for scenario x.
+- `data_meta/`: stores meta learning related data.
+  - `data_meta/scenario(x)/`: stores related data for scenario x, including adapted BR model.
 - `data_nometa`: stores no meta learning related data.
 - `data_noguide`: stores no guidance related data.
 - `data_mpc`: stores mpc related data.
@@ -82,7 +84,7 @@ $ python -m venv <venv-name>
 
 Second, enter the created virtual environment and install required python packages using `pip` and provided `requirements.txt`:
 ```bash
-$ source /path_to_venv-name/bin/activate    # virtual environment 
+$ source /path_to_venv-name/bin/activate    # enter virtual environment 
 (venv-name)$ pip install -r requirements.txt
 ```
 
