@@ -16,13 +16,13 @@ dimxB = 3           # dimension for follower's state
 
 # meta learning parameter
 gam = 5             # weight in meta cost function
-momentum = 0.8            # momentum in SGD
+momentum = 0.8      # momentum in SGD
 lr = 0.005          # learning rate (step size) in SGD for each task
 lr_meta = 0.005     # learning rate (step size) in SGD for updating the entire model
 
 # discritization parameters
 dt = 0.5            # time step for discritization
-Tf = 10             # time horizon in continuous setting
+Tf = 8             # time horizon in continuous setting
 
 # soft constraint parameters
 mu = 50
