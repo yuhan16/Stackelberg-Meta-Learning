@@ -1,10 +1,11 @@
-# sg-meta
+# Stackelberg Meta-Learning for Cooperative Trajectory Guidance
 This repo is for Stackelberg meta-learning project. The underlying application is UAV guiding UGV.
 
 
 ## File Structure Specifications
 - `data/`: data directory. Store necessary data including plots and key training data for reference.
 - `logs/`: log directory. Stroe training log for diagnosis.
+- `bash/`: bash scripts to run the algorithm in order to generate log files (redirect output to `logs/`)
 - `requirements.txt`: required python packeges for the project. Installed with `pip`.
 - Python scripts.
 
@@ -19,7 +20,7 @@ The following scripts are used for different purposes:
 (xxx)
 - `test_gendata`: generates and stores uniformly sampled BR data in `data_meta`
 - `test_mpc`: run MPC and online BR updating; stores data in `data_mpc`
-- `test_nometa`: run online BR updating with open loop control; stores data in `data_nometa`
+- `test_nometa`: run individual learning without meta-learning; stores data in `data_nometa`
 - `test_noguide`: run no guidance (myopic planning); stores data in `data_noguide`
 
 ### data directory

@@ -256,7 +256,6 @@ def adaption(theta):    # for follower 1 for now
     aux = Auxilary()
     meta = Meta()
     brnet = BRNet()
-    pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)   # theta = -1 for testing
     ff = Follower(0, theta=1)
@@ -295,8 +294,6 @@ def main():
     meta = Meta()
     brnet = BRNet()
     leader = Leader()
-    aux = Auxilary()
-    pltutil = PlotUtils()
     a_traj_list, br_list, D2_list = [], [], []
     iter, ITER_MAX = 0, 100
     while iter <= ITER_MAX:

@@ -136,6 +136,8 @@ def get_param(scn, theta):
         return scenario2(theta)
 
 def print_key_parameters():
+    import datetime
+    print('Simulation on', datetime.datetime.now())
     print('Parameters:')
     print('- type_pdf:', type_pdf)
     print('- kappa:', kappa)

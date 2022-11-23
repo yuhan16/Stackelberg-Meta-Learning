@@ -9,9 +9,6 @@ import param
 from utils_meta import BRNet, Leader, Follower, Meta
 
 
-def test():
-    a = 1
-
 def plot_env(ax, scn, theta):
     """
     This function plots the environment settings. Use it as a block for other plot functions.
@@ -28,6 +25,11 @@ def plot_env(ax, scn, theta):
         c = plt.Circle((obs[j][0], obs[j][1]), obs[j][2], ec='k', fc='0.9', fill=True, ls='--', lw=2)
         ax.add_patch(c)
         #ax.add_artist(c)
+
+    # check if plot directory exists
+    dir_name = 'data/plots/'
+    if not os.path.exists(dir_name):
+        os.mkdir(dir_name)
 
     return ax
 
@@ -70,7 +72,7 @@ def plot_empty_env():
     ax.plot(x0B[0], x0B[1], 'y^')
 
     ax.legend(fontsize='large')
-    fig.savefig('fig_empty_env.png')
+    fig.savefig('data/plots/fig_empty_env.png')
 
 
 def plot_no_guide():
@@ -84,7 +86,7 @@ def plot_no_guide():
     # get meta-learning trajectory
     xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
     aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-    key = 's' + str(scn) + 't' + str(theta)
+    key = 't' + str(theta)
     x_traj, a_traj = xx[key], aa[key]
     ff = Follower(scn, theta)
     x_meta, _ = ff.get_interactive_traj(x_traj[0,:], a_traj)
@@ -100,7 +102,212 @@ def plot_no_guide():
     ax.plot(x_noguide[:, 2], x_noguide[:, 3], 'gs', label='no guide')   # only plot follower's trajectory
     ax.legend(loc=4, fontsize='x-large')
 
-    fig.savefig('fig_meta_noguide.png')
+    fig.savefig('data/plots/fig_meta_noguide.png')
+    plt.close(fig)
+
+
+def plot_nometa_scn0():
+    scn, theta = 0, 0
+    ff = Follower(scn, theta)
+    xx = np.load('data/data_nometa/scenario' + str(scn) + '/x_traj_nometa.npy', allow_pickle=True).flat[0]
+    aa = np.load('data/data_nometa/scenario' + str(scn) + '/a_traj_nometa.npy', allow_pickle=True).flat[0]
+    key = 't' + str(theta)
+
+    x_traj, a_traj = xx[key], aa[key]
+    x_gd, _ = ff.get_interactive_traj(x_traj[0, :], a_traj)
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax = plot_env(ax, scn, theta)
+    ax.plot(x_gd[:,0], x_gd[:,1], 'b^', markersize=5)   # leader's position trajectory
+    ax.plot(x_gd[:,2], x_gd[:,3], 'ro', markersize=5)   # follower's position trajectory
+
+    fig.savefig('data/plots/fig_nometa_scn0task0.png')
+    plt.close(fig)
+
+
+def plot_meta_scn0():
+    scn = 0
+    # get meta trajectory
+    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
+    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+
+    key = 't' + str(0)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 0)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t0 = x_gd
+
+    key = 't' + str(1)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 1)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t1 = x_gd
+
+    key = 't' + str(2)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 2)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t2 = x_gd
+
+    key = 't' + str(3)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 3)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t3 = x_gd
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax.set_box_aspect(1)
+
+    ax.plot(x_t0[:, 2], x_t0[:, 3], 'b^', label='follower θ=0')
+    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
+    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
+    ax.plot(x_t3[:, 2], x_t3[:, 3], 'y^', label='follower θ=3')
+    ax = plot_env(ax, scn, theta=0)
+    ax.legend(loc=4, fontsize='x-large')
+    fig.savefig('data/plots/fig_meta_scn0.png')
+    plt.close(fig)
+
+
+def plot_meta_scn1():
+    scn = 1
+    # get meta trajectory
+    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
+    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+
+    key = 't' + str(0)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 0)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t0 = x_gd
+
+    key = 't' + str(1)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 1)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t1 = x_gd
+
+    key = 't' + str(2)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 2)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t2 = x_gd
+
+    key = 't' + str(3)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 3)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t3 = x_gd
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax.set_box_aspect(1)
+
+    ax.plot(x_t0[:, 2], x_t0[:, 3], 'b^', label='follower θ=0')
+    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
+    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
+    ax.plot(x_t3[:10, 2], x_t3[:10, 3], 'y^', label='follower θ=3')     # no need to plot all trajectory because get stuck
+    ax = plot_env(ax, scn, theta=0)
+    ax.legend(fontsize='x-large')
+    fig.savefig('data/plots/fig_meta_scn1.png')
+    plt.close(fig)
+
+
+def plot_meta_scn2():
+    scn = 2
+    # get meta trajectory
+    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
+    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+
+    key = 't' + str(0)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 0)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t0 = x_gd
+
+    key = 't' + str(1)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 1)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t1 = x_gd
+
+    key = 't' + str(2)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 2)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t2 = x_gd
+
+    key = 't' + str(3)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, 3)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t3 = x_gd
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax.set_box_aspect(1)
+
+    ax.plot(x_t0[:9, 2], x_t0[:9, 3], 'b^', label='follower θ=0')       # no need to plot all trajectory because get stuck
+    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
+    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
+    ax.plot(x_t3[:, 2], x_t3[:, 3], 'y^', label='follower θ=3')
+    ax = plot_env(ax, scn, theta=0)
+    ax.legend(fontsize='x-large')
+    fig.savefig('data/plots/fig_meta_scn1.png')
+    plt.close(fig)
+
+
+def plot_meta_detail():
+    scn, theta = 1, 0
+    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
+    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+    key = 't' + str(theta)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, theta)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t0 = x_gd
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax.plot(x_t0[:, 0], x_t0[:, 1], 'bo', label='leader')
+    ax.plot(x_t0[:, 2], x_t0[:, 3], 'r^', label='follower')
+    ax.plot(x_traj[:, 2], x_traj[:, 3], 'gx', label='leader\'s conjecture')
+    ax = plot_env(ax, scn, theta)
+    ax.legend(fontsize='large')
+    fig.savefig('fig_meta_detail_1.png')
+    plt.close(fig)
+
+
+    scn, theta = 2, 0
+    xx = np.load('data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
+    aa = np.load('data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+    key = 't' + str(theta)
+    x_traj, a_traj = xx[key], aa[key]
+    ff = Follower(scn, theta)
+    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    x_t0 = x_gd
+
+    fig, ax = plt.subplots()
+    ax.set_xlim((0,10))
+    ax.set_ylim((0,10))
+    ax.set_aspect(1)
+    ax.plot(x_t0[:, 0], x_t0[:, 1], 'bo', label='leader')
+    ax.plot(x_t0[:9, 2], x_t0[:9, 3], 'r^', label='follower')
+    ax.plot(x_traj[:, 2], x_traj[:, 3], 'gx', label='leader\'s conjecture')
+    ax = plot_env(ax, scn, theta)
+    ax.legend(fontsize='large', loc=4)
+    fig.savefig('data/plots/fig_meta_detail_2.png')
     plt.close(fig)
 
 
@@ -116,7 +323,7 @@ def plot_animation():
     xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
     aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
 
-    key = 's' + str(scn) + 't' + str(scn)
+    key = 't' + str(scn)
     x_traj, a_traj = xx[key], aa[key]
     ff = Follower(scn, theta)
     x_gd, b_gd = ff.get_ground_truth(x_traj[0,:], a_traj)
@@ -137,9 +344,14 @@ def plot_animation():
 
 
 if __name__ == '__main__':
-    test()
-    plot_empty_env()    # plot empty environment with initial positions for all robot. (single scenario)
+    plot_empty_env()    # plot empty environment with initial positions for all robots. (single scenario)
     
+    plot_meta_scn0()    # plot adaptation result for all robots (scenario 0).
+    plot_meta_scn1()    # plot adaptation result for all robots (scenario 1).
+    plot_meta_scn2()    # plot adaptation result for all robots (scenario 2).
+    plot_meta_detail()  # plot two detailed adaptation result (scenario 1 and scenario 2 task 0)
+
     plot_no_guide()     # plot no-guidance control result for a specific scenario and task.
+    plot_nometa_scn0()  # plot individual learning for scenario 0.
     plot_animation()    # plot series of figures to generate gif. (single scenario single task)
     

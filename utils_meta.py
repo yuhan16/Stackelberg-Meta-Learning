@@ -154,8 +154,8 @@ class Leader:
         if x_init is None or a_init is None:
             x_init, a_init = self.generate_initial_guess(brnet)
             x_init, a_init = self.project_trajectory(x_init, a_init)    # ensure feasibility of initial guess
-        #else:
-        #    x_init, a_init = self.project_trajectory(x_init, a_init)    # ensure feasibility of initial guess
+        else:
+            x_init, a_init = self.project_trajectory(x_init, a_init)    # ensure feasibility of initial guess
 
         # solve leader's OC problem with optimization and PMP
         x_opt, a_opt = self.opt_solver(brnet, x_init, a_init)          # directly formulate problem and use opt solver
@@ -509,12 +509,18 @@ class Leader:
         task_data is a 2d numpy array. task_data[i, :] = [x_t,a_t,b_t]
         """
         N = task_data.shape[0]
-        #x_traj, a_traj, b_traj = self.list2traj(task_data)
         x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx: self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
         x, a, b = self.to_torch(x_traj), self.to_torch(a_traj), self.to_torch(b_traj)
         br_cost_fn = torch.nn.MSELoss(reduction='sum')        
         cost = br_cost_fn(brnet(x, a), b).item() / N
         return cost
+
+    def obj_L(self, brnet, task_data, a_traj):
+        """
+        This function computes the meta function L.
+        """
+        x_traj, _ = self.get_conjectured_traj(brnet, a_traj)
+        return self.obj_oc(x_traj, a_traj) + self.gam * self.obj_br(brnet, task_data)
 
     def grad_obj_oc(self, brnet, a_traj):
         """
@@ -552,7 +558,6 @@ class Leader:
         The gradient stores in brnet and can be retrived by the method get_grad().
         """
         N = task_data.shape[0]
-        #x_traj, a_traj, b_traj = self.list2traj(task_data)
         x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx: self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
         x, a, b = self.to_torch(x_traj), self.to_torch(a_traj), self.to_torch(b_traj)
         br_cost_fn = torch.nn.MSELoss(reduction='sum')        
@@ -561,6 +566,47 @@ class Leader:
         brnet.zero_grad()   # clear gradient before computing the gradient
         cost.backward()
         return brnet
+
+    def grad_obj_L(self, brnet, task_data, a_traj):
+        """
+        This function computes gradient of meta function L.
+        Returns a brnet with same parameter (W,b) but updated gradient (dW, db).
+        The updated gradient in brnet can be retrived by the method get_grad() or get_grad_dict().
+        """
+        cost = 0
+        brnet_new = BRNet(); 
+        brnet_new.load_state_dict(brnet.state_dict())  # need deep copy or create a new brnet
+
+        # step 1: formulate JA
+        traj_len = a_traj.shape[0]
+        x0, xf, a_traj = self.to_torch(self.x0), self.to_torch(self.xf), self.to_torch(a_traj)
+        B1 = self.to_torch(self.B1)
+        q1, qf1 = self.to_torch(self.q1), self.to_torch(self.qf1)
+        q2, qf2 = self.to_torch(self.q2), self.to_torch(self.qf2)
+        r = self.to_torch(self.r)
+
+        for t in range(traj_len):
+            a_t = a_traj[t, :]
+            if t == 0:
+                x_t = x0
+            else:
+                # update dynamics: x_tp1 = x_t + B1 a_t + A(x) b(x_t,a_t)
+                x_t = x_t + B1 @ a_t \
+                    + torch.tensor([[0.,0.], [0.,0.], [torch.cos(x_t[-1])*self.dt,0], [torch.sin(x_t[-1])*self.dt,0], [0,self.dt]]) @ brnet(x_t, a_t)
+            cost += (x_t-xf) @ q1 @ (x_t-xf) + x_t @ q2 @ x_t + a_t @ r @ a_t    # stage cost
+        cost += (x_t-xf) @ qf1 @ (x_t-xf) + x_t @ qf2 @ x_t     # terminal cost
+
+        # step 2: formulate QA
+        N = len(task_data)
+        x_traj, a_traj, b_traj = task_data[:, :self.dimx], task_data[:, self.dimx: self.dimx+self.dima], task_data[:, self.dimx+self.dima: ] 
+        x, a, b = self.to_torch(x_traj), self.to_torch(a_traj), self.to_torch(b_traj)
+        br_cost_fn = torch.nn.MSELoss(reduction='sum')        
+        
+        # step 3: let L = JA + gam * QA and find gradient
+        cost += self.gam * br_cost_fn(brnet_new(x, a), b) / N
+        brnet_new.zero_grad()   # clear gradient before computing the gradient
+        cost.backward()
+        return brnet_new
 
     def get_b(self, brnet, x, a):
         """
@@ -582,6 +628,18 @@ class Leader:
         """
         return torch.from_numpy(x).float()
 
+    def get_conjectured_traj(self, brnet, a_traj):
+        """
+        This function generates the conjectured x_traj and b_traj based on a_traj and brnet.
+        The trajectory is based on the leader's conjecture brnet, not the real interactive trajectory.
+        """
+        traj_len = a_traj.shape[0]
+        x_traj, b_traj = np.zeros((traj_len+1, self.dimx)), np.zeros_like(a_traj)
+        x_traj[0, :] = self.x0
+        for i in range(traj_len):
+            b_traj[i, :] = self.get_b(brnet, x_traj[i, :], a_traj[i, :])
+            x_traj[i+1, :] = self.dynamics(x_traj[i, :], a_traj[i, :], b_traj[i, :])
+        return x_traj, b_traj
 
 
 class Follower:
@@ -742,7 +800,8 @@ class Follower:
         
     def get_interactive_traj(self, x0, a_traj):
         """
-        This function generates the follower's real interactive trajectory given x0 and leader's action trajection a_traj.
+        This function generates the real interactive trajectory given x0 and leader's action trajection a_traj.
+        The follower responses according to his real objective instead of brnet.
         """
         traj_len = a_traj.shape[0]
         x_traj, b_traj = np.zeros((traj_len+1, self.dimx)), np.zeros((traj_len, self.dimb))
@@ -985,7 +1044,7 @@ class Meta:
         self.kappa = param.kappa
         self.lr = param.lr
         self.lr_meta = param.lr_meta
-        self.mu = param.momentum
+        self.momentum = param.momentum
     
     def sample_tasks(self, K):
         """
@@ -1096,7 +1155,7 @@ class Meta:
                 for n, p in brnet.named_parameters():
                     if n == 'linear4.weight' or n == 'linear4.bias':    # linear4 is constant and has no grad
                         continue
-                    p -= (self.lr_meta / len(task_sample)) * (self.mu * p + dp[n])
+                    p -= (self.lr_meta / len(task_sample)) * (self.momentum * p + dp[n])
         return brnet
 
     def update_model_theta(self, leader, brnet, task_data, a_traj):
@@ -1114,7 +1173,7 @@ class Meta:
                 for n, p in brnet_mid.named_parameters():
                     if n == 'linear4.weight' or n == 'linear4.bias':    # linear4 is constant and has no grad
                         continue
-                    p -= self.lr * (self.mu * p + dp[n])                # one step sgd with momentum
+                    p -= self.lr * (self.momentum * p + dp[n])                # one step sgd with momentum
         return brnet_mid
 
     def train_brnet(self, brnet, task_data, N=100):
@@ -1127,12 +1186,11 @@ class Meta:
         
         dimx, dima = param.dimx, param.dima  
         D = task_data[np.random.choice(task_data.shape[0], N), :]   # randomly pick N data points.
-        #D = self.list2array( random.choices(task_data, k=N) )
         x_traj, a_traj, b_traj = D[:, 0: dimx], D[:, dimx: dimx+dima], D[:, dimx+dima: ]
         x, a, b = torch.from_numpy(x_traj).float(), torch.from_numpy(a_traj).float(), torch.from_numpy(b_traj).float()
         
         loss_fn = torch.nn.MSELoss(reduction='sum')
-        optimizer = torch.optim.SGD(brnet.parameters(), lr=0.001, momentum=self.mu)
+        optimizer = torch.optim.SGD(brnet.parameters(), lr=0.001, momentum=self.momentum)
         epoch = 2
         batch_size = 10
         ITER_MAX = 10   # control iteration number. Can be overfitting
