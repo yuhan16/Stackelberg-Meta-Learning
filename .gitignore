@@ -1,0 +1,7 @@
+__pycache__
+tmp*
+# ignore generated data
+data/br_data/*
+data/data_meta/*
+data/data_noguide/*
+data/data_nometa/*
