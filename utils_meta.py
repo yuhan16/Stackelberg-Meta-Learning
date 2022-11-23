@@ -3,6 +3,7 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
 import torch
+import matplotlib.pyplot as plt
 import param
 
 
@@ -1149,7 +1150,7 @@ class Meta:
                     continue
                 dp[n] += dp_i[n]
         # use accumulated gradient (DW,db) to update (W,b) in brnet
-        ITER_MAX = 2
+        ITER_MAX = 1
         with torch.no_grad():       # use no_grad to mannually update NN parameter
             for iter in range(ITER_MAX):
                 for n, p in brnet.named_parameters():
@@ -1206,3 +1207,105 @@ class Meta:
                 if t == ITER_MAX-1:
                     print('epoch {}, cost {}'.format(ep, cost.item()))
         return brnet
+
+
+
+class Auxiliary():
+    """
+    This class defines auxiliary functions such as constraint checks and trajectory plotting.
+    """
+    def __init__(self) -> None:
+        self.dimx, self.dimxA, self.dimxB = param.dimx, param.dimxA, param.dimxB
+        self.dima, self.dimb = param.dima, param.dimb
+        self.Tf, self.dt, self.dimT = param.Tf, param.dt, int(param.Tf / param.dt)
+        self.B1 = self.dt*np.vstack( (np.eye(self.dima), np.zeros((self.dimxB, self.dima))) )
+        
+    def check_dynamics_diff(self, brnet, x_traj, a_traj):
+        """
+        This function checks if the given trajectory satisfy the dynamics constraint. 
+        """
+        traj_len = a_traj.shape[0]
+        Ax = lambda x: self.dt * np.array([[0,0], [0,0], [np.cos(x[-1]),0], [np.sin(x[-1]),0], [0,1]])
+        dif = np.zeros((traj_len, self.dimx))   # diff_t = f(x_t, a_t) - x_tp1
+        for i in range(traj_len):
+            dyn = x_traj[i, :] + self.B1 @ a_traj[i, :] + Ax(x_traj[i,:]) @ self.get_b(brnet, x_traj[i,:], a_traj[i,:])
+            dif[i, :] = x_traj[i+1, :] - dyn
+        return dif 
+
+    def check_input_constraint(self, brnet, x_traj, a_traj):
+        """
+        This function checks if the optimized trajectory violates the control input constraints.
+        """
+        eps = 1e-4
+        # for control input constraints
+        tmp = a_traj[:, 0]**2 + a_traj[:, 1]**2
+        idx = np.argwhere(tmp > 1+eps); idx = idx.reshape(idx.size)
+        if idx.size == 0: 
+            print('No input constraint violation.')
+        else:
+            print('Input constraint violation. idx: {}'.format(idx))
+        
+    def check_dynamics_constraint(self, brnet, x_traj, a_traj):
+        """
+        This function checks if the optimized trajectory violates the dynamics constraints.
+        """
+        eps = 1e-2
+        # for dynamics constraints
+        f = np.zeros(self.dimT*self.dimx)
+        fA, fB = np.zeros(self.dimT), np.zeros(self.dimT)
+        Ax = lambda x: self.dt * np.array([[0,0], [0,0], [np.cos(x[-1]),0], [np.sin(x[-1]),0], [0,1]])
+        for i in range(self.dimT):
+            i_x = i * self.dimx
+            f[i_x: i_x+self.dimx] = -x_traj[i+1,:] + x_traj[i,:] + self.B1 @ a_traj[i, :] + Ax(x_traj[i,:]) @ self.get_b(brnet, x_traj[i,:], a_traj[i,:])
+            fA[i] = np.linalg.norm(f[i_x: i_x+self.dimxA])
+            fB[i] = np.linalg.norm(f[i_x+self.dimxA: i_x+self.dimx])
+        idx = np.argwhere(np.abs(fA) > eps); idx = idx.reshape(idx.size)
+        if idx.size == 0:
+            print('No dynamic constraint violation for leader.')
+        else:
+            print('Dynamic constraint violation for leader. idx: {}'.format(idx))
+        idx = np.argwhere(np.abs(fB) > eps); idx = idx.reshape(idx.size)
+        if idx.size == 0:
+            print('No dynamic constraint violation for follower.')
+        else:
+            print('Dynamic constraint violation for follower. idx: {}'.format(idx))
+        
+    def check_safety_constraint(self, leader, x_traj):
+        f, g = [], []
+        for t in range(self.dimT+1):
+            pA, pB = x_traj[t, :self.dimxA], x_traj[t, self.dimxA: -1]
+            for j in range(leader.obs_num):
+                p_j, d_j = leader.obs[j, :2], leader.obs[j, -1]
+                if np.linalg.norm(pA-p_j) < d_j:
+                    f.append(t)
+                if np.linalg.norm(pB-p_j) < d_j:
+                    g.append(t)
+        if len(f) == 0:
+            print('No safety constraint violation for the leader.')
+        else:
+            print('Safety constraint violation for the leader:', f)
+        if len(g) == 0:
+            print('No safety constraint violation for the follower.')
+        else:
+            print('Safety constraint violation for the follower:', g)
+    
+    def get_b(self, brnet, x, a):
+        return brnet(torch.from_numpy(x).float(), torch.from_numpy(a).float()).detach().numpy().astype(float)
+    
+    def plot_trajectory(self, x_traj, real_pB=None, sim_pB=None):
+        """
+        This function plots the leader and follower's path trajectory given x_traj. x_traj is numpy array.
+        real_pB: interactive follower's trajectory
+        sim_pB: leader's conjectured follower's trajectory 
+        """
+        fig = plt.figure()
+        pA, pB = x_traj[:, 0: self.dimxA], x_traj[:, self.dimxA: -1]
+        #traj_len = x_traj.shape[0]
+        plt.plot(pA[:,0], pA[:,1], 'b^')
+        plt.plot(pB[:,0], pB[:,1], 'gs')
+        if real_pB is not None:
+            plt.plot(real_pB[:,0], real_pB[:,1], 'ro')
+        if sim_pB is not None:
+            plt.plot(sim_pB[:,0], sim_pB[:,1], 'mx')
+        plt.savefig('tmp_fig_test.png')
+        plt.close(fig)

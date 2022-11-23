@@ -17,12 +17,6 @@ The following scripts are used for different purposes:
 - `misc_test`: test scripts for different function testing.
 - `plot_figs.py`: functions to plot figures.
 
-(xxx)
-- `test_gendata`: generates and stores uniformly sampled BR data in `data_meta`
-- `test_mpc`: run MPC and online BR updating; stores data in `data_mpc`
-- `test_nometa`: run individual learning without meta-learning; stores data in `data_nometa`
-- `test_noguide`: run no guidance (myopic planning); stores data in `data_noguide`
-
 ### data directory
 We have following sub directories in `data/`:
 - `plots/`: stores simulation plots.
@@ -32,7 +26,6 @@ We have following sub directories in `data/`:
   - `data_meta/scenario(x)/`: stores related data for scenario x, including adapted BR model.
 - `data_nometa`: stores no meta learning related data.
 - `data_noguide`: stores no guidance related data.
-- `data_mpc`: stores mpc related data.
 
 ### log directory
 The log directory has the same structure as `data/`.
@@ -49,30 +42,29 @@ The log directory has the same structure as `data/`.
 - Use `brnet` to store parameter value only. Its gradient `.grad` is useless.
 
 
-### Function Specifications
+### Class Specifications
 - Use one global parameter file, which defines type-related information.
-- Four classes to implement different functions: `Leader`, `Follower`, `BRNet`, `Meta`.
+- Five classes to implement different functions: `Leader`, `Follower`, `BRNet`, `Meta`, `Auxiliary`.
   - `Leader`: compute leader's objective; solve leader's decision problem.
   - `Follower`: compute follower's objective; compute follower's best response.
   - `BRNet`: defines the best response NN.
   - `Meta`: sample and algorithm.
+  - `Auxiliary`: auxiliary functions such as constraint check and simple plot functions for test.
 
-Leader's obj parameter `alp`. Follower's obj parameter `beta`.
+In `Leader` class, we specify some function structures:
+- `solve_oc`: solve the trajectory optimization
+  - `opt_solver`: use optimization solver to obtain the trajectory
+  - `pmp_solver`: use pmp conditions to refine the trajectory
+- `obj_oc`: objective of control cost, same applies to `obj_br`, `obj_L`
+- `grad_obj_oc`: gradient of control cost, same applies to `grad_obj_br`, `grad_obj_L`
 
-Meta:
-- `sample_task_theta`
-  - `sample_task_theta_traj`
-  - `sample_task_theta_uniform`
-- `update_model`
-  - `grad_obj_L`
-  - `one_step_sgd_momentum`
-- `update_model_theta`
-  - `grad_obj_L`
-  - `one_step_sgd_momentum`
-
-Leader:
-- `solve_oc`
-  - `xxx`
+In `Meta` class, we specify some function structures:
+- `sample_task_theta`: sample BR data for task theta
+  - `sample_task_theta_traj`: sample BR data for task theta near the trajectory
+  - `sample_task_theta_uniform`: randomly sample BR data for task theta
+- `update_model`: update meta model
+- `update_model_theta`: update intermediate model
+- `train_brnet`: train separate brnet for different followers, designed for individual learning
 
 
 ## Installation Instructions
@@ -90,3 +82,15 @@ $ source /path_to_venv-name/bin/activate    # enter virtual environment
 ```
 
 Then you are ready to run all the scripts.
+
+## Running Bash Scripts
+We provide two bash scripts to run the algorithm and redirect the output to `logs/` directory.
+- `sg_meta.sh`: for Stackelberg meta-learning
+- `non_meta.sh`: for individual learning
+If there is no need to generate logs, ignore the bash scripts.
+
+Note that since we encapsulate different learning algorithms into separate functions in `main_test.py`, we need to **comment unrelated functions when running the bash scripts**. For example, 
+- When running `sg_meta.sh`, only leave function `sg_meta_learn()` in `main_test.py` uncommented.
+- When running `non_meta.sh`, only leave function `individual_learn()` in `main_test.py` uncommented.
+
+We can specify the scenario index in the bash script to run the algorithm for different scenarios.

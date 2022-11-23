@@ -5,7 +5,7 @@ Encapusulate each test into a test function and run the test.
 
 import torch
 import numpy as np
-from utils_meta import BRNet, Leader, Follower, Meta
+from utils_meta import BRNet, Leader, Follower, Meta, Auxiliary
 from os.path import exists
 
 
@@ -139,10 +139,9 @@ def test5():    # sampling test
     
 
 def test6():    # opt solver test for single agent 0/1
-    aux = Auxilary()
+    aux = Auxiliary()
     meta = Meta()
     brnet = BRNet()
-    pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)
 
@@ -153,10 +152,10 @@ def test6():    # opt solver test for single agent 0/1
         brnet = meta.train_brnet(brnet, task_data, N=1000)
         torch.save(brnet, 'data/brnet1_init.pth')
     x_traj, a_traj = leader.solve_oc(brnet)
-    pltutil.plot_trajectory(x_traj)
+    aux.plot_trajectory(x_traj)
     #f1 = Follower(1)
     #x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
-    #pltutil.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
+    #aux.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
     #print(leader.obj_oc(x_gd, a_traj))
     
     dif = aux.check_dynamics(x_traj, a_traj, brnet)
@@ -164,10 +163,9 @@ def test6():    # opt solver test for single agent 0/1
     print( leader.get_b_traj(brnet, x_traj, a_traj) )
 
 def test7():    # opt solver test for single agent, multiple times
-    aux = Auxilary()
+    aux = Auxiliary()
     meta = Meta()
     brnet = BRNet()
-    pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)
     f1 = Follower(0, 1)
@@ -181,9 +179,9 @@ def test7():    # opt solver test for single agent, multiple times
 
     for iter in range(10):
         x_traj, a_traj = leader.solve_oc(brnet)
-        pltutil.plot_trajectory(x_traj, real_pB=None)
+        aux.plot_trajectory(x_traj, real_pB=None)
         x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
-        pltutil.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
+        aux.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
         print('iter {}, guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )
 
         # update brnet
@@ -192,10 +190,9 @@ def test7():    # opt solver test for single agent, multiple times
         tmp = 1
     
 def test8():    # test solve_oc1 function, test content is the same as test7()
-    aux = Auxilary()
+    aux = Auxiliary()
     meta = Meta()
     brnet = BRNet()
-    pltutil = PlotUtils()
     leader = Leader()
     leader.read_task_info(1)   # theta = -1 for testing
     ff = Follower(0, theta=1)
@@ -232,10 +229,11 @@ def test8():    # test solve_oc1 function, test content is the same as test7()
         for i in range(len(x_traj_list)):
             x_gd, b_gd = ff.get_interactive_traj(x_traj_list[i][0,:], a_traj_list[i])
             x_sm, b_sm = leader.shooting_simulate_traj(brnet, a_traj_list[i])
-            pltutil.plot_trajectory(x_traj_list[i], real_pB=x_gd[:, 2:4], sim_pB=None)
+            #pltutil.plot_trajectory(x_traj_list[i], real_pB=x_gd[:, 2:4], sim_pB=None)
 
             print('traj {}: iter {},  guess = {:.3f}, real = {:.3f}'.format(i, iter, leader.obj_oc(x_traj_list[i], a_traj_list[i]), leader.obj_oc(x_gd, a_traj_list[i])) )    
-            aux.check_constraint_violation(brnet, x_traj_list[i], a_traj_list[i])
+            aux.check_input_constraint(brnet, x_traj_list[i], a_traj_list[i])
+            aux.check_dynamics_constraint(brnet, x_traj_list[i], a_traj_list[i])
             tmp = 1
 
         # update brnet
@@ -253,7 +251,7 @@ def test9():    # no guidance test
 
         
 def adaption(theta):    # for follower 1 for now
-    aux = Auxilary()
+    aux = Auxiliary()
     meta = Meta()
     brnet = BRNet()
     leader = Leader()
@@ -286,7 +284,8 @@ def adaption(theta):    # for follower 1 for now
         
         # plot things
         print('iter {},  guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )    
-        aux.check_constraint_violation(brnet, x_traj, a_traj)
+        aux.check_input_constraint(brnet, x_traj, a_traj)
+        aux.check_dynamics_constraint(brnet, x_traj, a_traj)
         tmp = 1
 
 

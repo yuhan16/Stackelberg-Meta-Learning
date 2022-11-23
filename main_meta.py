@@ -54,7 +54,7 @@ def no_guide():
             np.save(fname, b_traj)
 
 
-def nometa(scn, theta):
+def nometa(scn, theta):     # componenet of individual_learn()
     """
     This function implements non-meta learning. Online update brnet and then planning.
     """
@@ -124,7 +124,7 @@ def individual_learn():
         print('meta ADAPTATION for secnario {} task {}, time: {} s.'.format(scn, theta, end_t-start_t))
 
 
-def meta_training(scn):
+def meta_training(scn):     # componenet of sg_meta_learn()
     leader = Leader()
     meta = Meta()
     brnet = BRNet()
@@ -179,7 +179,7 @@ def meta_training(scn):
     np.save(dir_name + 'a_traj_meta.npy', a_init_dict)
 
 
-def meta_adapt(scn, theta):
+def meta_adapt(scn, theta): # componenet of individual_learn()
     leader = Leader()
     meta = Meta()
     brnet = BRNet()
@@ -269,7 +269,8 @@ if __name__ == '__main__':
     """
     Uncomment individual_learn() to run individual learning.
     """
-
+    individual_learn()              # implement individual learning (a non-meta-learning approach) for a specific scenario
+    nometa(0, 1)                    # run individual learning (a non-meta-learning approach) for scenario 0 task 1
 
     """
     Uncomment no_guide() to run no guidance control.
