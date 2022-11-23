@@ -1140,7 +1140,7 @@ class Meta:
 
         for i in range(len(task_sample)):
             theta = task_sample[i]
-            leader.read_task_info(theta)
+            leader.read_task_info(leader.scn, theta)
             brnet_i = leader.grad_obj_L(br_list[i], D2_list[i], a_traj_list[i])
             
             # compute accumulated gradient

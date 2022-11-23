@@ -87,7 +87,14 @@ Then you are ready to run all the scripts.
 We provide two bash scripts to run the algorithm and redirect the output to `logs/` directory.
 - `sg_meta.sh`: for Stackelberg meta-learning
 - `non_meta.sh`: for individual learning
-If there is no need to generate logs, ignore the bash scripts.
+Use `bash` command to run the bash script. For example,
+```bash
+$ bash sg_meta.sh
+```
+If there is no need to generate logs, use python command line to run the algorithm. For example,
+```bash
+(venv-name) $ python main_test.py 0   # run algorithm for scenario 0
+```
 
 Note that since we encapsulate different learning algorithms into separate functions in `main_test.py`, we need to **comment unrelated functions when running the bash scripts**. For example, 
 - When running `sg_meta.sh`, only leave function `sg_meta_learn()` in `main_test.py` uncommented.

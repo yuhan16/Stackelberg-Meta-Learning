@@ -13,6 +13,14 @@ def generate_random_br_data():
     """
     This function generates randomly sampled BR data for all scenarios.
     """
+    # generate data directory
+    if not os.path.exists('data/'):
+        os.mkdir('data')
+        os.mkdir('data/br_data/')
+        os.mkdir('data/data_meta/')
+        os.mkdir('data/data_noguide/')
+        os.mkdir('data/data_nometa/')
+
     TOTAL_SCE = 3
     TOTAL_TYPE = param.total_type
     meta = Meta()
@@ -67,8 +75,8 @@ def nometa(scn, theta):     # componenet of individual_learn()
 
     # load initial trajectory
     dir_name = 'data/data_nometa/scenario' + str(scn) + '/'
-    x_init_dict = np.load(dir_name + 'x_traj_meta.npy', allow_pickle=True).flat[0]
-    a_init_dict = np.load(dir_name + 'a_traj_meta.npy', allow_pickle=True).flat[0]
+    x_init_dict = np.load(dir_name + 'x_traj_nometa.npy', allow_pickle=True).flat[0]
+    a_init_dict = np.load(dir_name + 'a_traj_nometa.npy', allow_pickle=True).flat[0]
 
     ITER_MAX = 30       # non-meta-training steps
     xx = []
@@ -78,7 +86,7 @@ def nometa(scn, theta):     # componenet of individual_learn()
         x_init_dict[key], a_init_dict[key] = x_traj.copy(), a_traj.copy()     # update initial trajectory dictionary
         
         # some checks
-        x_gd, b_gd = ff.get_ground_truth(x_traj[0,:], a_traj)
+        x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
         print('iter {},  guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )    
         #aux.check_constraint_violation(brnet, x_traj, a_traj)
         #aux.check_safety(leader, x_traj)
@@ -93,8 +101,8 @@ def nometa(scn, theta):     # componenet of individual_learn()
         #xx = np.hstack( (x_traj[:, :leader.dimxA], x_gd[:, leader.dimxA:]) )
 
     # save learning results
-    np.save(dir_name + 'x_traj_meta.npy', x_init_dict)
-    np.save(dir_name + 'a_traj_meta.npy', a_init_dict)
+    np.save(dir_name + 'x_traj_nometa.npy', x_init_dict)
+    np.save(dir_name + 'a_traj_nometa.npy', a_init_dict)
     torch.save(brnet, dir_name + 'brnet_nometa_task' + str(theta) + '.pth')
 
 
@@ -109,7 +117,9 @@ def individual_learn():
     #scn = 0
 
     x_init_dict, a_init_dict = {}, {}   # record initial trajectory in each learning iteration
-    dir_name = 'data/data_nometa' + + str(scn) + '/'
+    x_init_dict['t0'], x_init_dict['t1'], x_init_dict['t2'], x_init_dict['t3'] = None, None, None, None
+    a_init_dict['t0'], a_init_dict['t1'], a_init_dict['t2'], a_init_dict['t3'] = None, None, None, None
+    dir_name = 'data/data_nometa/scenario' + str(scn) + '/'
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
     np.save(dir_name + '/x_traj_nometa.npy', x_init_dict)
@@ -130,8 +140,10 @@ def meta_training(scn):     # componenet of sg_meta_learn()
     brnet = BRNet()
 
     x_init_dict, a_init_dict = {}, {}               # record initial trajectory in each meta-training iteration
+    x_init_dict['t0'], x_init_dict['t1'], x_init_dict['t2'], x_init_dict['t3'] = None, None, None, None
+    a_init_dict['t0'], a_init_dict['t1'], a_init_dict['t2'], a_init_dict['t3'] = None, None, None, None
     a_traj_list, br_list, D2_list = [], [], []
-    iter, ITER_MAX = 0, 50
+    iter, ITER_MAX = 0, 50          # meta training iterations
     while iter <= ITER_MAX:
         print('Meta Iteration: {}'.format(iter))
         task_sample = meta.sample_tasks(5)
@@ -257,22 +269,22 @@ if __name__ == '__main__':
     """
     Before run any functions, first run generate_random_br_data() to obtain and store randomly sampled BR data.
     """
-    generate_random_br_data()       # pre-sample BR data for future use.
+    #generate_random_br_data()       # pre-sample BR data for future use.
     
     """
     Uncomment sg_meta_learn() to run SG meta-learning.
     """
-    #sg_meta_learn()                # implement Stackelberg meta-learning and adaptation for a specific scenario
+    sg_meta_learn()                # implement Stackelberg meta-learning and adaptation for a specific scenario
     #meta_training(0)               # run meta training for scenario 0.
     #meta_adapt(0, 1)               # run adaptation for scenario 0 task 1.
 
     """
     Uncomment individual_learn() to run individual learning.
     """
-    individual_learn()              # implement individual learning (a non-meta-learning approach) for a specific scenario
-    nometa(0, 1)                    # run individual learning (a non-meta-learning approach) for scenario 0 task 1
+    #individual_learn()              # implement individual learning (a non-meta-learning approach) for a specific scenario
+    #nometa(0, 1)                    # run individual learning (a non-meta-learning approach) for scenario 0 task 1
 
     """
     Uncomment no_guide() to run no guidance control.
     """    
-    no_guide()                      # implement no-guidance control for the follower. (all scenarios)
+    #no_guide()                      # implement no-guidance control for the follower. (all scenarios)
