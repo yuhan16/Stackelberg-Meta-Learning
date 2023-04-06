@@ -1,4 +1,4 @@
-# sg-meta 
+# Stackelberg Meta-Learning for Cooperative Trajectory Guidance
 This repo is for Stackelberg meta-learning project. The underlying application is UAV guiding UGV.
 
 
@@ -78,16 +78,3 @@ In `Meta` class, we specify some functions:
 - update_model: update meta model
 - update_model_theta: update intermediate model
 - train_brnet: train separate brnet for different followers, designed for individual learning
-
-
-### Checklist for small tests
-- [x] NN output and jac computation
-- [x] leader's obs jac, dynamics jac
-- [x] leader opt
-- [x] leader pmp
-- [x] leader's initial trajectory
-- [x] follower br opt, jac
-- [x] meta-learning inner GD update
-- [x] meta-learning outer GD update
-- [x] data sampling, random and trajectory
-- [x] sg adaptation
