@@ -1,343 +1,318 @@
 """
-This scripts performs miscellaneous tests. 
-Encapusulate each test into a test function and run the test.
+This script performs miscellaneous tests encapsulated in a function.
 """
-
-import torch
 import numpy as np
-from utils_meta import BRNet, Leader, Follower, Meta, Auxiliary
-from os.path import exists
+from utils import Leader, Follower, Meta, PlotUtils, BRNet
+import matplotlib.pyplot as plt
+import torch
 
 
-def test1():     # basic function test
-    f1 = Follower(0, 0)
-    x = np.array([3,3, 2.2,2.2,0.])
-    a = np.array([0.1, 0.1])
-    b_opt = f1.get_br(x, a)
-    #print(b_opt)
-    #print(f1.compute_obj(x, a, b_opt))
+def test1():    # test environment plot
+    pltutil = PlotUtils()
+    fig, ax = plt.subplots()
+    ax = pltutil.plot_env(ax)
+    fig.savefig('tmp/tmp1.png')
+    plt.close(fig)
+
+
+def test2():    # test data sampling function
+    leader = Leader()
+    leader.meta = Meta()
+    ff = Follower(0)
     
-    x = np.array([ 9.68049253,  8.19268296,  0.40908305,  4.6376705 , -0.14172506])
-    a = np.array([-0.51520282, -0.50625648])
-    b_opt = f1.get_br(x, a)
-    x = np.array([6.16562293, 3.6280085 , 6.08480784, 9.70409036, 0.38566065])
-    a = np.array([-0.05890506,  0.25706389])
-    b_opt = f1.get_br(x, a)
-    x = np.array([ 6.49518801,  8.60204918,  7.06759417,  4.3650341 , -0.77067148])
-    a = np.array([-0.7588574 , -0.65125681])
-    b_opt = f1.get_br(x, a)
+    print(leader.meta.sample_tasks(4))
+    
+    # random sample
+    data = leader.meta.sample_task_theta_random(0, [], 10)
+    print(data)
+    data1 = leader.meta.sample_task_theta_random(0, data, 5)
+    print(data1)
+    
+    # trajectory sample
+    x_traj, a_traj = np.random.rand(leader.dimT+1, leader.dimx), np.random.rand(leader.dimT, leader.dimua)
+    data2 = leader.meta.sample_task_theta(0, x_traj, a_traj, data, 10)
+    print(data2)
 
-    meta = Meta()
-    print(meta.sample_tasks(100))
-    d1 = meta.sample_task_theta_uniform(f1, 10)
-    print(len(d1))
+    # near obstacle sample
+    data3 = leader.meta.sample_task_theta_obs(0, [], 10)
+    print(data3)
+    data4 = leader.meta.sample_task_theta_obs(0, data3, 5)
+    print(data4)
 
-    brnet = BRNet()
-    #print(brnet(torch.tensor([[1.,2.,3.,4.,5.,6.], [1.,2.,3.,4.,5.,6.]])))
-    x, a = torch.ones(5), torch.ones(2)
-    gx, ga = brnet.compute_input_jac(x, a)
-    print(gx, ga)
 
-def test2():     # leader's cost function and OC computation
-    scn, theta = 0, 0
-    meta = Meta()
-    brnet = BRNet()
+def test3():    # plot colormap
     leader = Leader()
-    leader.read_task_info(scn, theta)
+    leader.meta = Meta()
+    theta = 0
+    ff = Follower(theta)
+    def fz(x, y):    # compute follower's cost function
+        cost = 0
+        p = np.array([x, y])
+        cost += ff.coeff[0] * (p-ff.pd) @ (p-ff.pd)
+        J_obs = 0
+        for i in range(len(ff.obs)):
+            obs_i = ff.obs[i]
+            xc, yc, rc = obs_i[0], obs_i[1], obs_i[2]
+            x_scale, y_scale = obs_i[4], obs_i[5]
+            f1 = np.diag([1/x_scale, 1/y_scale]) @ (p-np.array([xc,yc]))
+            if obs_i[3] == 1:
+                f2 = np.linalg.norm(f1, ord=1)
+            elif obs_i[3] == 2:
+                f2 = np.linalg.norm(f1, ord=2)
+            else:
+                f2 = np.linalg.norm(f1, ord=np.inf)
+            # check safety margin
+            if ff.coeff[3]*(f2-rc) <= 0.1:
+                J_obs -= np.log(0.1)
+                #return np.inf
+            elif ff.coeff[3]*(f2-rc) <= 1:
+                J_obs -= np.log(ff.coeff[3]*(f2-rc))
+            else:
+                pass
+        cost += J_obs*50
+        return cost
+    
+    x, y = np.arange(0, 10.1, 0.1), np.arange(0, 10.1, 0.1)
+    X, Y = np.meshgrid(x, y)
+    Z = np.zeros((X.shape[0]-1, Y.shape[0]-1))
+    for i in range(X.shape[0]-1):
+        for j in range(X.shape[1]-1):
+            Z[i, j] = fz(X[i,j], Y[i,j])
+    fig, ax = plt.subplots()
+    plot = ax.pcolormesh(X, Y, Z, cmap='RdPu')
+    ax.set_aspect(1)
+    ax.set_title('color map for follower '+str(theta))
+    fig.colorbar(plot)
+    fig.savefig('tmp/tmp2.png')
+    plt.close(fig)
 
-    x_traj, a_traj = leader.solve_oc(brnet)
-    oc_cost = leader.obj_oc(x_traj, a_traj)
-    print(oc_cost)
 
-    follower = Follower(scn, theta)
-    task_data = meta.sample_task_theta(follower, x_traj, a_traj, N=100)
-    br_cost = leader.obj_br(brnet, task_data)
-    print(br_cost)
+def test4():    # test nn related
+    model = torch.nn.Sequential(torch.nn.Linear(2,3), torch.nn.Softmax())
+    for n, p in model.named_parameters():
+        print(n)
+        print(p)
+        print(p.grad)
+    
+    X, Y = torch.rand(1,2), torch.rand(1,3)
+    loss_fn = torch.nn.MSELoss()
+    loss = loss_fn(model(X), Y)
+    h = torch.autograd.functional.hessian(loss_fn, (model(X),Y))
+    print(h)
 
-    oc_grad = leader.grad_obj_oc(brnet, a_traj)
-    print(oc_grad.get_data())
-    br_grad = leader.grad_obj_br(brnet, task_data)
-    print(br_grad.get_grad())
-
-    b2 = meta.update_model_theta(leader, brnet, task_data, a_traj)
-    np.save('taskdata.npy', task_data)
-    np.save('xtraj.npy', x_traj)
-    np.save('atraj.npy', a_traj)
-
-def test3():
-    meta = Meta()
-    brnet = BRNet()
-    leader = Leader()
-    leader.read_task_info(0)
-
-    task_data = np.load('taskdata.npy')
-    x_traj = np.load('xtraj.npy')
-    a_traj = np.load('atraj.npy')
-
-    oc_cost = leader.obj_oc(x_traj, a_traj)
-    print(oc_cost)
-    br_cost = leader.obj_br(brnet, task_data)
-    print(br_cost)
-    br_grad = leader.grad_obj_br(brnet, task_data)
-    print(br_grad.get_grad())
-
-def test4():    # brnet test
-    brnet1 = BRNet()
-    x1, a1 = torch.tensor([1,0,0,1,0.]), torch.tensor([1,1.])
-    x2, a2 = torch.tensor([0,1,0,1,1.]), torch.tensor([0,1.])
-    b1 = torch.tensor([0,-1.])
-    y1 = brnet1(x1, a1)
-    cost_fn = torch.nn.MSELoss(reduction='sum')
-    cost1 = cost_fn(y1, b1)
-    brnet1.zero_grad()
-    cost1.backward()
-    # monitor output of each layer
-    y = []  # y[i] is a 2d array
-    def forward_hook(model, input, output):
-        y.append( output.detach() )
-    h1 = brnet1.linear1.register_forward_hook(forward_hook)
-    h2 = brnet1.linear2.register_forward_hook(forward_hook)
-    h3 = brnet1.linear3.register_forward_hook(forward_hook)
-    #h4 = brnet1.linear4.register_forward_hook(forward_hook)
-    _ = brnet1.forward(x1, a1)
-    h1.remove()
-    h2.remove()
-    h3.remove()
-    #h4.remove()
-    print(y)
-    p1 = brnet1.get_data_dict(); dp1 = brnet1.get_grad_dict()
-    for n, _ in brnet1.named_parameters():
-        print(n, p1[n])
-        print(dp1[n])
-
-    # test stack
-    brnet = BRNet()
-    x, a = torch.stack((x1, x2, x1)), torch.stack((a1, a2, a1))
-    y = brnet(x, a)
-    b = torch.stack((b1,2*b1, 3*b1))
-    cost = cost_fn(y, b)
-    brnet.zero_grad()
-    cost.backward()
-    p = brnet.get_data_dict(); dp = brnet.get_grad_dict()
-    for n, _ in brnet.named_parameters():
-        print(n,p[n])
-        print(dp[n])
-
-def test5():    # sampling test
-    scn, theta = 0, 0
-    leader = Leader()
-    meta = Meta()
-    ff = Follower(scn, theta)
-    leader.read_task_info(scn, theta)
-    task_data = meta.sample_task_theta_uniform(ff, N=10)
-    print(task_data)
-
-    x_traj = np.random.rand(leader.dimT+1, leader.dimxA+leader.dimxB)
-    a_traj = np.random.rand(leader.dimT, leader.dima)
-    task_data = meta.sample_task_theta(ff, x_traj, a_traj, N=10)
-    print(task_data)
+    loss.backward()
     
 
-def test6():    # opt solver test for single agent 0/1
-    aux = Auxiliary()
-    meta = Meta()
-    brnet = BRNet()
+def test5():    # test BRNet gradient and intermediate computation
+    torch.set_default_dtype(torch.float64)
     leader = Leader()
-    leader.read_task_info(1)
-
-    task_data = np.load('data/task1_uniform.npy')
-    if exists('data/brnet1_init.pth'):
-        brnet = torch.load('data/brnet1_init.pth')
-    else:
-        brnet = meta.train_brnet(brnet, task_data, N=1000)
-        torch.save(brnet, 'data/brnet1_init.pth')
-    x_traj, a_traj = leader.solve_oc(brnet)
-    aux.plot_trajectory(x_traj)
-    #f1 = Follower(1)
-    #x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
-    #aux.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
-    #print(leader.obj_oc(x_gd, a_traj))
+    brnet = BRNet()
+    x, a = 10*torch.rand(leader.dimx)-5, torch.rand(leader.dimua)
+    #x, a = torch.tensor([1.,2,3,4,5]), torch.tensor([1.,1])
+    print(brnet(x,a))
+    #print(brnet(x[None,:], a[None,:]))
+    #print(brnet.get_intermediate_output(x, a))
+    print("")
+    jac_x, jac_a = brnet.compute_input_jac(x,a)
+    print('analytic: ', jac_x, jac_a)
+    print("")
     
-    dif = aux.check_dynamics(x_traj, a_traj, brnet)
-    print( np.abs(np.max(dif)) )
-    print( leader.get_b_traj(brnet, x_traj, a_traj) )
+    #check gradient using forward prediction
+    eps = 1.4901161193847656e-08
+    jac_xx, jac_aa = torch.zeros_like(jac_x), torch.zeros_like(jac_a)
+    for i in range(leader.dimx):
+        tmp = torch.zeros(leader.dimx)
+        tmp[i] = eps
+        res = (brnet(x+tmp, a) - brnet(x, a) ) / eps
+        jac_xx[:, i] = res.data
+        #jac_xx[:, i] = res.numpy().astype(float)
+    for i in range(leader.dimua):
+        tmp = torch.zeros(leader.dimua)
+        tmp[i] = eps
+        res = (brnet(x, a+tmp) - brnet(x, a) ) / eps
+        jac_aa[:, i] = res.data
+        #jac_aa[:, i] = res.numpy().astype(float)
+    print('forward: ', jac_xx, jac_aa)
+    print("difference:")
+    print(jac_xx-jac_x)
+    print(jac_aa-jac_a)
 
-def test7():    # opt solver test for single agent, multiple times
-    aux = Auxiliary()
-    meta = Meta()
-    brnet = BRNet()
+
+def test6():    # leader's optimal control
     leader = Leader()
-    leader.read_task_info(1)
-    f1 = Follower(0, 1)
+    leader.meta = Meta()
+    x0 = np.array([1,8, 0,8, 0.78])
+    theta = 0
+    br_data = np.load('data/br_data/f' + str(theta) + '_rand.npy')
+    br = BRNet()
+    br.load_state_dict(torch.load('data/indiv_data/br'+str(theta)+'.pth'))
 
-    task_data = np.load('data/task1_uniform.npy')
-    if exists('data/brnet1_init.pth'):
-        brnet = torch.load('data/brnet1_init.pth')
-    else:
-        brnet = meta.train_brnet(brnet, task_data, N=50)
-        torch.save(brnet, 'data/brnet1_init.pth')
+    x_init, ua_init = leader.init1(x0)
+    x_init, ua_init = leader.init2(x0)
+    leader.obj_oc(x_init, ua_init)
+    grad_x, grad_a = leader.grad_obj_oc(x_init, ua_init)
 
-    for iter in range(10):
-        x_traj, a_traj = leader.solve_oc(brnet)
-        aux.plot_trajectory(x_traj, real_pB=None)
-        x_gd, b_gd = f1.get_interactive_traj(x_traj[0,:], a_traj)
-        aux.plot_trajectory(x_traj, real_pB=x_gd[:, 2:4])
-        print('iter {}, guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )
-
-        # update brnet
-        traj_data = meta.list2array( meta.sample_task_theta_traj(f1, x_traj, a_traj, N=100) )
-        brnet = meta.train_brnet(brnet, traj_data)
-        tmp = 1
+    # forward derivative approximation test
+    eps=1.4901161193847656e-08
+    approx_x = np.zeros_like(grad_x)
+    for t in range(leader.dimT):
+        for i in range(leader.dimx):
+            tmp = np.zeros(leader.dimx)
+            tmp[i] = eps
+            xtmp_traj = x_init.copy()
+            xtmp_traj[t+1, :] = x_init[t+1,:] + tmp
+            approx_x[t, i] = (leader.obj_oc(xtmp_traj, ua_init) - leader.obj_oc(x_init, ua_init)) / eps
+    print(grad_x - approx_x)
+    approx_a = np.zeros_like(grad_a)
+    for t in range(leader.dimT):
+        for i in range(leader.dimua):
+            tmp = np.zeros(leader.dimua)
+            tmp[i] = eps
+            uatmp_traj = ua_init.copy()
+            uatmp_traj[t,:] = ua_init[t,:] + tmp
+            approx_a[t, i] = (leader.obj_oc(x_init, uatmp_traj) - leader.obj_oc(x_init, ua_init)) / eps
+    print(grad_a - approx_a)
     
-def test8():    # test solve_oc1 function, test content is the same as test7()
-    aux = Auxiliary()
-    meta = Meta()
-    brnet = BRNet()
-    leader = Leader()
-    leader.read_task_info(1)   # theta = -1 for testing
-    ff = Follower(0, theta=1)
+    x_traj, ua_traj = leader.compute_opt_traj(br.state_dict(), x_init, ua_init)
+    print(leader.obj_oc(x_traj, ua_traj))
+    print(leader.grad_obj_oc(x_traj, ua_traj))
 
-    fname = 'data/task_test_uniform.npy'
-    fname = 'data/task1_uniform.npy' 
-    if exists(fname):
-        task_data = np.load(fname)
-        task_data = meta.array2list(task_data)
-    else:
-        task_data = meta.sample_task_theta_uniform(ff, N=10000)
-        np.save(fname, meta.list2array(task_data))
-    fname = 'data/brnet_meta_test_s0v2.pth'
-    if exists(fname):
-        brnet = torch.load(fname)
-    else:
-        brnet = meta.train_brnet(brnet, task_data, N=100)
-        torch.save(brnet, 'data/brnet_test_init.pth')
 
-    x_traj_list, a_traj_list = [], []
-    for iter in range(10):
-        x_traj_list, a_traj_list = leader.solve_oc1(brnet, x_traj_list, a_traj_list, traj_num=1)
-        
-        # find the optimal solution from candidate trajectories.
-        cost_list = []
-        for i in range(len(x_traj_list)):
-            cost_list.append( leader.obj_oc(x_traj_list[i], a_traj_list[i]) )
-        idx = np.argmin(np.array(cost_list))
-        x_traj_opt, a_traj_opt = x_traj_list[idx], a_traj_list[idx]
-        # cost_opt = cost_list[idx]
-        print('Optimal trjaectory: %d\n' %(idx))
-
-        # plot things
-        for i in range(len(x_traj_list)):
-            x_gd, b_gd = ff.get_interactive_traj(x_traj_list[i][0,:], a_traj_list[i])
-            x_sm, b_sm = leader.shooting_simulate_traj(brnet, a_traj_list[i])
-            #pltutil.plot_trajectory(x_traj_list[i], real_pB=x_gd[:, 2:4], sim_pB=None)
-
-            print('traj {}: iter {},  guess = {:.3f}, real = {:.3f}'.format(i, iter, leader.obj_oc(x_traj_list[i], a_traj_list[i]), leader.obj_oc(x_gd, a_traj_list[i])) )    
-            aux.check_input_constraint(brnet, x_traj_list[i], a_traj_list[i])
-            aux.check_dynamics_constraint(brnet, x_traj_list[i], a_traj_list[i])
-            tmp = 1
-
-        # update brnet
-        #new_data = meta.sample_task_theta_traj(ff, x_traj_opt, a_traj_opt, N=100)   # use trajectory data
-        #new_data = task_data                                                        # use uniform data
-        new_data = meta.sample_task_theta(ff, x_traj_opt, a_traj_opt, N=100)         # use mix data
-        brnet = meta.train_brnet(brnet, new_data, N=50)
-        tmp = 1
-
-def test9():    # no guidance test
-    scn, theta = 0, 0
-    ff = Follower(scn, theta)
-    x_traj, b_traj = ff.no_guidance()
-    print(x_traj, b_traj)
-
-        
-def adaption(theta):    # for follower 1 for now
-    aux = Auxiliary()
-    meta = Meta()
-    brnet = BRNet()
-    leader = Leader()
-    leader.read_task_info(1)   # theta = -1 for testing
-    ff = Follower(0, theta=1)
-
-    fname = 'data/task_test_uniform.npy'
-    fname = 'data/task1_uniform.npy' 
-    if exists(fname):
-        task_data = np.load(fname)
-        task_data = meta.array2list(task_data)
-    else:
-        task_data = meta.sample_task_theta_uniform(ff, N=10000)
-        np.save(fname, meta.list2array(task_data))
-    fname = 'data/brnet_meta_test_s0v2.pth'
-    if exists(fname):
-        brnet = torch.load(fname)
-    else:
-        brnet = meta.train_brnet(brnet, task_data, N=100)
-        torch.save(brnet, 'data/brnet_test_init.pth')
+def test7():    # parameter change
+    br = BRNet()
+    mom_dict = br.get_zero_grad_dict()
     
-    for iter in range(10):
-        x_traj, a_traj = leader.solve_oc2(brnet)
-        x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-        D1_theta = meta.sample_task_theta(ff, x_traj, a_traj, N=200)
-        brnet_new = meta.update_model_theta(leader, brnet, D1_theta, a_traj)
+    def change_dict(mom_dict):
+        for key in mom_dict.keys():
+            mom_dict[key] = 0.9 * mom_dict[key] + 1
+        return
 
-        brnet.load_state_dict(brnet_new.state_dict())
-        del brnet_new
-        
-        # plot things
-        print('iter {},  guess = {:.3f}, real = {:.3f}'.format(iter, leader.obj_oc(x_traj, a_traj), leader.obj_oc(x_gd, a_traj)) )    
-        aux.check_input_constraint(brnet, x_traj, a_traj)
-        aux.check_dynamics_constraint(brnet, x_traj, a_traj)
-        tmp = 1
+    change_dict(mom_dict)
+    print(mom_dict)
 
 
-def main():
-    meta = Meta()
-    brnet = BRNet()
+def test8():    # test follower's real br and learned br model
+    pltutil = PlotUtils()
     leader = Leader()
-    a_traj_list, br_list, D2_list = [], [], []
-    iter, ITER_MAX = 0, 100
-    while iter <= ITER_MAX:
-        print('Meta Iteration: {}'.format(iter))
-        task_sample = meta.sample_tasks(5)
-        #task_sample = [2, 3]
-        for i in range(len(task_sample)):
-            theta = task_sample[i]
-            leader.read_task_info(theta)
-            follower_theta = Follower(0, theta)
+    leader.meta = Meta()
+    theta = 0
+    ff = Follower(theta)
+    br = BRNet()
+    fname = 'data/indiv_data/br' + str(theta) + '.pth'
+    br.load_state_dict(torch.load(fname))
+    
+    D_rand = np.load('data/br_data/f' + str(theta) + '_rand.npy')
+    D_obs = np.load('data/br_data/f' + str(theta) + '_obs.npy')
+    D = D_rand
+    #D = leader.to_torch(D)
 
-            # sample D1_theta and update model
-            x_traj, a_traj = leader.solve_oc2(brnet)
-            D1_theta = meta.sample_task_theta(follower_theta, x_traj, a_traj, N=200)
-            br_list.append( meta.update_model_theta(leader, brnet, D1_theta, a_traj) ) 
-            """br_list has the same (W,b) as brnet but updated gradient (dW,db) for different tasks."""
-
-            # sample D2_theta for future update
-            x_traj, a_traj = leader.solve_oc2(brnet)
-            D2_list.append( meta.sample_task_theta(follower_theta, x_traj, a_traj, N=200) )
-            a_traj_list.append( a_traj )
+    for i in range(20):
+        idx = np.random.choice(D.shape[0])
+        data = D[idx, :]
+        x, ua, ub = data[:leader.dimx], data[leader.dimx: leader.dimx+leader.dimua], data[leader.dimx+leader.dimua:]
+        pa, pb, phib = x[0:2], x[2:4], x[-1]
         
-        # update the entire BR model
-        brnet = meta.update_model(leader, brnet, task_sample, br_list, D2_list, a_traj_list) # ??? to be tested
-        iter += 1
-        
-        # clear intermidiate brnets and D2
-        br_list.clear()
-        D2_list.clear()
-        a_traj_list.clear()
-    torch.save(brnet, 'data/brnet_meta_test_s0v2.pth')
-    print('task sample:', task_sample)
-    meta.print_info()
+        #pb = [1.96341623, 2.78558818]
+        #phib = [1]
+        #x = np.array(pb + pb + phib)    # get rid
+        #ua = np.array([0.1, 0.1])
+    
+        print('ua: ', ua)
+        print('data (vb, wb): ', ub)
+        pltutil.plot_leader_follower_pos(x)
+
+        ub_pred = br(leader.to_torch(x), leader.to_torch(ua))
+        ub_real = ff.get_br(x, ua)
+        print('real (vb, wb): ', ub_real)
+        print('predict (vb, wb): ', ub_pred.detach().numpy())
+        print("")
+    
+    #pltutil.plot_follower_pos(np.array(pb+phib))
+    #print(br(x, ua))
+    
+
+def test9():    # test leader's mpc
+    theta = 0
+    # possible x0: 
+    x0 = np.array([1,8, 0,8, 0.5])
+    x0 = np.array([5,1, 6,0, 3.])
+    x0 = np.array([0,4.5, 0,4, 0.])
+
+    import main as main_script
+    x,ua, ub = main_script.receding_horizon(theta, x0)
+    np.save('data/rc_traj_'+str(theta)+'_x_type'+str(theta)+'_'+str(x0[0:2])+'.npy', x)
+    np.save('data/rc_traj_'+str(theta)+'_ua_type'+str(theta)+'_'+str(x0[0:2])+'.npy', ua)
+    np.save('data/rc_traj_'+str(theta)+'_ub_type'+str(theta)+'_'+str(x0[0:2])+'.npy', ub)
 
 
+def test10():   # test training results
+    theta = 1
+    ep_train = np.load('data/indiv_data/ep_train'+str(theta)+'.npy')
+    ep_test = np.load('data/indiv_data/ep_test'+str(theta)+'.npy')
 
-if __name__ == '__main__':
-    #main()
-    #adaption(1)
-    #test1()    # basic funcion test
-    test2()    # leader's cost function and OC computation
-    #test3()
-    #test4()     # brnet test
-    #test5()
-    #test6()    # opt and pmp solver test for single agent, single time.
-    #test7()    # opt and pmp solver test for single agent, multiple time
-    #test8()     # test solve_oc1, test content same as test7()
-    #test9()     # no guidance
+    fig, ax = plt.subplots()
+    ax.plot(ep_train.mean(axis=1), label='ave train')
+    ax.plot(ep_test.mean(axis=1), label='ave test')
+    ax.set_title('training loss for follower'+str(theta))
+    ax.legend()
+    fig.savefig('tmp/tmp5.png')
+    plt.close(fig)
+
+    meta_cost = np.load('data/meta_data/meta_loss.npy')[:17500]
+    fig, ax = plt.subplots()
+    ax.plot(meta_cost)
+    ax.set_title('meta training')
+    plt.savefig('tmp/tmp4.png')
+    plt.close()
+    
+
+def test12():   # train new adapted model
+    theta = 3
+    leader = Leader()
+    leader.meta = Meta()
+    br = BRNet()
+    br.load_state_dict(torch.load('data/meta_data/meta_br.pth'))
+    br_data_rand = np.load('data/br_data/f' + str(theta) + '_rand.npy')
+    br_data_obs = np.load('data/br_data/f' + str(theta) + '_obs.npy')
+
+    D_theta = leader.meta.sample_task_theta(theta, br_data_rand, br_data_obs, N=2000)
+    D_theta = br_data_obs[leader.rng.choice(br_data_obs.shape[0], 2000), :]
+    #D_theta = np.load('data/gdtest'+str(theta)+'.npy')
+    #D_theta = D_theta[:1000, :]
+    x, ua, ub = D_theta[:, :leader.dimx], D_theta[:, leader.dimx: leader.dimx+leader.dimua], D_theta[:, leader.dimx+leader.dimua:]
+    x, ua, ub = leader.to_torch(x), leader.to_torch(ua), leader.to_torch(ub)
+    loss_fn = torch.nn.MSELoss(reduction='mean')
+    lr = 1e-4
+    mom = 0.5
+    optimizer = torch.optim.SGD(br.parameters(), lr=lr, momentum=mom)
+    epoch, ITER = 200, 50
+    tmp = []
+    for ep in range(epoch):
+        idx = leader.rng.choice(D_theta.shape[0], 200)
+        idx = torch.from_numpy(idx)
+        xx, uua, uub = x[idx,:], ua[idx,:], ub[idx,:]
+        for i in range(ITER):
+            loss = loss_fn(br(xx,uua), uub) *(leader.dimx+leader.dimua)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            tmp.append(loss.item())
+    print(tmp)
+    # save adapted response model
+    fname = 'data/meta_data/adapt' + str(theta) + '.pth'
+    torch.save(br.state_dict(), fname)
+    return tmp
+
+
+if __name__ == "__main__":
+    #test1()     # test environment plot
+    #test2()     # test sampling
+    #test3()     # plot color map for follower's cost
+    #test4()     # test nn related
+    #test5()     # test BRnet gradient
+    #test6()     # test leader's optimal control related
+    #test7()     # test dict parameter change
+    #test8()     # test follower's real br and learned br model
+    #test9()     # test leader's mpc
+    #test10()    # test training results
+    test12()
