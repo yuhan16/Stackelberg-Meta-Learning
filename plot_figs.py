@@ -1,357 +1,193 @@
 """
-This script implements different plot functions using stored data in the data/ directory.
+This script plots figures. Define each plot function.
 """
-
-import os
-import matplotlib.pyplot as plt
 import numpy as np
-import param
-from utils_meta import BRNet, Leader, Follower, Meta
+from utils import Leader, Follower, Meta, PlotUtils, BRNet
+import matplotlib.pyplot as plt
 
 
-def plot_env(ax, scn, theta):
-    """
-    This function plots the environment settings. Use it as a block for other plot functions.
-    """
-    obs, _, _, pf, _, _, _ = param.get_param(scn, theta) 
-    obs_num = len(obs)
-    obs = np.array(obs)
-
-    # plot destination
-    ax.plot(pf[0], pf[1], '*', markersize=20, color='y')
-
-    # plot obstacles
-    for j in range(obs_num):
-        c = plt.Circle((obs[j][0], obs[j][1]), obs[j][2], ec='k', fc='0.9', fill=True, ls='--', lw=2)
-        ax.add_patch(c)
-        #ax.add_artist(c)
-
-    # check if plot directory exists
-    dir_name = 'data/plots/'
-    if not os.path.exists(dir_name):
-        os.mkdir(dir_name)
-
-    return ax
-
-
-def plot_empty_env():
-    """
-    This function plots the empty environment with robot starting positions for a specific scenario.
-    """
-    scn = 2
+def plot_adapt_curve():     # plot final adapted loss for all followers
     leader = Leader()
-    TOTAL_TYPE = param.total_type
-    fig, ax = plt.subplots()
-    ax = plot_env(ax, scn, 0)
-    ax.set_xlim((-0.5,10.5))
-    ax.set_ylim((-0.5,10.5))
-    ax.set_aspect(1)
+    leader.meta = Meta()
 
-    theta = 0
-    leader.read_task_info(scn, theta)
-    x0A, x0B = leader.x0[0: leader.dimxA], leader.x0[leader.dimxA: ]
-    ax.plot(x0A[0], x0A[1], 'bo', label='type θ=0')
-    ax.plot(x0B[0], x0B[1], 'b^')
-
-    theta = 1
-    leader.read_task_info(scn, theta)
-    x0A, x0B = leader.x0[0: leader.dimxA], leader.x0[leader.dimxA: ]
-    ax.plot(x0A[0], x0A[1], 'ro', label='type θ=1')
-    ax.plot(x0B[0], x0B[1], 'r^')
-
-    theta = 2
-    leader.read_task_info(scn, theta)
-    x0A, x0B = leader.x0[0: leader.dimxA], leader.x0[leader.dimxA: ]
-    ax.plot(x0A[0], x0A[1], 'go', label='type θ=2')
-    ax.plot(x0B[0], x0B[1], 'g^')
-
-    theta = 3
-    leader.read_task_info(scn, theta)
-    x0A, x0B = leader.x0[0: leader.dimxA], leader.x0[leader.dimxA: ]
-    ax.plot(x0A[0], x0A[1], 'yo', label='type θ=3')
-    ax.plot(x0B[0], x0B[1], 'y^')
-
-    ax.legend(fontsize='large')
-    fig.savefig('data/plots/fig_empty_env.png')
-
-
-def plot_no_guide():
-    """
-    This function plots no-guidance vs meta-learning result for a specific scenario and task.
-    """
-    scn, theta = 0, 2
-    # get no guidance trajectory
-    x_noguide = np.load('data/data_noguide/scenario' + str(scn) + '/task' + str(theta) + '_xtraj.npy')
-
-    # get meta-learning trajectory
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-    key = 't' + str(theta)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, theta)
-    x_meta, _ = ff.get_interactive_traj(x_traj[0,:], a_traj)
+    import plot_data
+    param_ave = np.array(plot_data.param_ave_loss)
+    output_ave = np.array(plot_data.output_ave_loss)
+    adapt = np.array(plot_data.adapt_loss)
 
     fig, ax = plt.subplots()
-    #x.set_xlim((0,8))
-    #ax.set_ylim((1,9))
-    ax.set_aspect(1)
-    ax.set_box_aspect(1)
-    ax = plot_env(ax, scn, theta)
-
-    ax.plot(x_meta[:, 2], x_meta[:, 3], 'r^', label='meta-learning')    # only plot follower's trajectory
-    ax.plot(x_noguide[:, 2], x_noguide[:, 3], 'gs', label='no guide')   # only plot follower's trajectory
-    ax.legend(loc=4, fontsize='x-large')
-
-    fig.savefig('data/plots/fig_meta_noguide.png')
-    plt.close(fig)
-
-
-def plot_nometa_scn0():
-    scn, theta = 0, 0
-    ff = Follower(scn, theta)
-    xx = np.load('data/data_nometa/scenario' + str(scn) + '/x_traj_nometa.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_nometa/scenario' + str(scn) + '/a_traj_nometa.npy', allow_pickle=True).flat[0]
-    key = 't' + str(theta)
-
-    x_traj, a_traj = xx[key], aa[key]
-    x_gd, _ = ff.get_interactive_traj(x_traj[0, :], a_traj)
-
-    fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax = plot_env(ax, scn, theta)
-    ax.plot(x_gd[:,0], x_gd[:,1], 'b^', markersize=5)   # leader's position trajectory
-    ax.plot(x_gd[:,2], x_gd[:,3], 'ro', markersize=5)   # follower's position trajectory
-
-    fig.savefig('data/plots/fig_nometa_scn0task0.png')
-    plt.close(fig)
-
-
-def plot_meta_scn0():
-    scn = 0
-    # get meta trajectory
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-
-    key = 't' + str(0)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 0)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t0 = x_gd
-
-    key = 't' + str(1)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 1)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t1 = x_gd
-
-    key = 't' + str(2)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 2)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t2 = x_gd
-
-    key = 't' + str(3)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 3)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t3 = x_gd
-
-    fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax.set_box_aspect(1)
-
-    ax.plot(x_t0[:, 2], x_t0[:, 3], 'b^', label='follower θ=0')
-    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
-    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
-    ax.plot(x_t3[:, 2], x_t3[:, 3], 'y^', label='follower θ=3')
-    ax = plot_env(ax, scn, theta=0)
-    ax.legend(loc=4, fontsize='x-large')
-    fig.savefig('data/plots/fig_meta_scn0.png')
-    plt.close(fig)
-
-
-def plot_meta_scn1():
-    scn = 1
-    # get meta trajectory
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-
-    key = 't' + str(0)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 0)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t0 = x_gd
-
-    key = 't' + str(1)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 1)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t1 = x_gd
-
-    key = 't' + str(2)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 2)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t2 = x_gd
-
-    key = 't' + str(3)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 3)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t3 = x_gd
-
-    fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax.set_box_aspect(1)
-
-    ax.plot(x_t0[:, 2], x_t0[:, 3], 'b^', label='follower θ=0')
-    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
-    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
-    ax.plot(x_t3[:10, 2], x_t3[:10, 3], 'y^', label='follower θ=3')     # no need to plot all trajectory because get stuck
-    ax = plot_env(ax, scn, theta=0)
+    x = ['θ=0', 'θ=1', 'θ=2', 'θ=3', 'θ=4']
+    x_axis = np.arange(leader.meta.total_type)
+    ax.bar(x_axis-0.2, adapt[:,-1], width=0.2, color=(0.121,0.467,0.705), alpha=0.8, label='Adaptation')
+    ax.bar(x_axis, output_ave[:,-1], width=0.2, color=(0.992, 0.725, 0.419), alpha=0.8, label='Output-Ave')
+    ax.bar(x_axis+0.2, param_ave[:,-1]/2, width=0.2, color=(0.925, 0.364, 0.231), alpha=0.8, label='Param-Ave (/2)')
+    ax.set_xticks(x_axis)
+    ax.set_xticklabels(x)
+    ax.xaxis.set_tick_params(labelsize='large')
+    ax.yaxis.set_tick_params(labelsize='large')
+    ax.set_xlabel('Follower type', fontsize='xx-large')
+    ax.set_ylabel('MSE Error', fontsize='xx-large')
     ax.legend(fontsize='x-large')
-    fig.savefig('data/plots/fig_meta_scn1.png')
+    fig.savefig('data/plots/adapt_final.png', dpi=300)
     plt.close(fig)
 
 
-def plot_meta_scn2():
-    scn = 2
-    # get meta trajectory
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
+def plot_adapt_theta(theta):    # plot adaptation curve for type theta follower
+    leader = Leader()
+    leader.meta = Meta()
 
-    key = 't' + str(0)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 0)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t0 = x_gd
-
-    key = 't' + str(1)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 1)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t1 = x_gd
-
-    key = 't' + str(2)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 2)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t2 = x_gd
-
-    key = 't' + str(3)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, 3)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t3 = x_gd
+    import plot_data
+    param_ave = np.array(plot_data.param_ave_loss)
+    output_ave = np.array(plot_data.output_ave_loss)
+    adapt = np.array(plot_data.adapt_loss)
 
     fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax.set_box_aspect(1)
-
-    ax.plot(x_t0[:9, 2], x_t0[:9, 3], 'b^', label='follower θ=0')       # no need to plot all trajectory because get stuck
-    ax.plot(x_t1[:, 2], x_t1[:, 3], 'r^', label='follower θ=1')
-    ax.plot(x_t2[:, 2], x_t2[:, 3], 'g^', label='follower θ=2')
-    ax.plot(x_t3[:, 2], x_t3[:, 3], 'y^', label='follower θ=3')
-    ax = plot_env(ax, scn, theta=0)
+    #x = ['θ=0', 'θ=1', 'θ=2', 'θ=3', 'θ=4']
+    x_axis = np.arange(leader.meta.total_type)
+    ax.plot(adapt[theta,:], color=(0.121,0.467,0.705), alpha=0.8, label='Adaptation')
+    ax.plot(output_ave[theta,:], color=(0.992, 0.725, 0.419), alpha=0.8, label='Output-Ave')
+    #ax.bar(x_axis-0.2, adapt[:,-1], width=0.2, color=(0.121,0.467,0.705), alpha=0.8, label='Adaptation')
+    #ax.bar(x_axis, output_ave[:,-1], width=0.2, color=(0.992, 0.725, 0.419), alpha=0.8, label='Output-Ave')
+    #ax.bar(x_axis+0.2, param_ave[:,-1]/2, width=0.2, color=(0.925, 0.364, 0.231), alpha=0.8, label='Param-Ave (/2)')
+    #ax.set_xticks(x_axis)
+    #ax.set_xticklabels(x)
+    ax.xaxis.set_tick_params(labelsize='large')
+    ax.yaxis.set_tick_params(labelsize='large')
+    ax.set_xlabel('Iteration', fontsize='xx-large')
+    ax.set_ylabel('MSE Error', fontsize='xx-large')
     ax.legend(fontsize='x-large')
-    fig.savefig('data/plots/fig_meta_scn1.png')
+    fig.savefig('data/plots/adapt'+str(theta)+'.png', dpi=300)
     plt.close(fig)
 
 
-def plot_meta_detail():
-    scn, theta = 1, 0
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-    key = 't' + str(theta)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, theta)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t0 = x_gd
-
+def plot_mpc_traj(theta):       # plot mpc trajectory for type theta follower 
+    leader = Leader()
+    pltutil = PlotUtils()
     fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax.plot(x_t0[:, 0], x_t0[:, 1], 'bo', label='leader')
-    ax.plot(x_t0[:, 2], x_t0[:, 3], 'r^', label='follower')
-    ax.plot(x_traj[:, 2], x_traj[:, 3], 'gx', label='leader\'s conjecture')
-    ax = plot_env(ax, scn, theta)
-    ax.legend(fontsize='large')
-    fig.savefig('fig_meta_detail_1.png')
+    ax = pltutil.plot_env(ax)
+    color = [(0.121,0.467,0.705), (0.992, 0.725, 0.419), (0.925, 0.364, 0.231)]
+    
+    x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[1. 8.].npy')
+    pa, pb = x[:, 0:leader.dimxa], x[:, leader.dimxa: leader.dimx-1]
+    ax.plot(pa[:,0], pa[:,1], 'o-', markersize=6, linewidth=1, color=color[0], alpha=0.5, markeredgecolor='none', label='leader')
+    ax.plot(pb[:,0], pb[:,1], '^-', markersize=6, linewidth=1, color=color[2], alpha=0.5, markeredgecolor='none', label='follower')
+
+    x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[5. 1.].npy')
+    pa, pb = x[:75, 0:leader.dimxa], x[:75, leader.dimxa: leader.dimx-1]
+    ax.plot(pa[:,0], pa[:,1], 'o-', markersize=6, linewidth=2, color=color[0], alpha=0.5)
+    ax.plot(pb[:,0], pb[:,1], '^-', markersize=6, linewidth=2, color=color[2], alpha=0.5)
+
+    #x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[0. 4.5].npy')
+    #pa, pb = x[:, 0:leader.dimxa], x[:, leader.dimxa: leader.dimx-1]
+    #ax.plot(pa[:,0], pa[:,1], 'o-', markersize=6, linewidth=2, color=color[0], alpha=0.5)
+    #ax.plot(pb[:,0], pb[:,1], '^-', markersize=6, linewidth=2, color=color[2], alpha=0.5)
+
+    ax.xaxis.set_tick_params(labelsize='x-large')
+    ax.yaxis.set_tick_params(labelsize='x-large')
+    ax.legend(fontsize='x-large')
+    fig.set_figwidth(4.8)
+    fig.savefig('data/plots/mpc'+str(theta)+'.png', dpi=300)
     plt.close(fig)
 
 
-    scn, theta = 2, 0
-    xx = np.load('data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-    key = 't' + str(theta)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, theta)
-    x_gd, b_gd = ff.get_interactive_traj(x_traj[0,:], a_traj)
-    x_t0 = x_gd
-
-    fig, ax = plt.subplots()
-    ax.set_xlim((0,10))
-    ax.set_ylim((0,10))
-    ax.set_aspect(1)
-    ax.plot(x_t0[:, 0], x_t0[:, 1], 'bo', label='leader')
-    ax.plot(x_t0[:9, 2], x_t0[:9, 3], 'r^', label='follower')
-    ax.plot(x_traj[:, 2], x_traj[:, 3], 'gx', label='leader\'s conjecture')
-    ax = plot_env(ax, scn, theta)
-    ax.legend(fontsize='large', loc=4)
-    fig.savefig('data/plots/fig_meta_detail_2.png')
-    plt.close(fig)
-
-
-def plot_animation():
-    """
-    This function plots a series of figures to generate gif for animation.
-    """
-    dir_name = 'tmp_animation/'
-    if not os.path.exists(dir_name):
-        os.mkdir(dir_name)
-
-    scn, theta = 2, 2
-    xx = np.load('data/data_meta/scenario' + str(scn) + '/x_traj_adapt.npy', allow_pickle=True).flat[0]
-    aa = np.load('data/data_meta/scenario' + str(scn) + '/a_traj_adapt.npy', allow_pickle=True).flat[0]
-
-    key = 't' + str(scn)
-    x_traj, a_traj = xx[key], aa[key]
-    ff = Follower(scn, theta)
-    x_gd, b_gd = ff.get_ground_truth(x_traj[0,:], a_traj)
-
-    for i in range(1, x_traj.shape[0]+1):
+def plot_traj_animation(theta):
+    leader = Leader()
+    pltutil = PlotUtils()
+    color = [(0.121,0.467,0.705), (0.992, 0.725, 0.419), (0.925, 0.364, 0.231)]
+    
+    x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[1. 8.].npy')
+    #x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[5. 1.].npy')
+    x = np.load('data/rc_traj_'+str(theta)+'/x_type'+str(theta)+'_[0. 4.5].npy')
+    pa, pb = x[:, 0:leader.dimxa], x[:, leader.dimxa: leader.dimx-1]
+    for i in range(x.shape[0]):
         fig, ax = plt.subplots()
-        ax.set_xlim((-0.5,10.5))
-        ax.set_ylim((-0.5,10.5))
-        ax.set_aspect(1)
-        ax = plot_env(ax, scn, theta)
-        ax.plot(x_gd[0:i, 0], x_gd[0:i, 1], 'bo', label='leader')   # leader's trajectory
-        ax.plot(x_gd[0:i, 2], x_gd[0:i, 3], 'r^', label='follower')
-        ax.legend(loc=4, fontsize='large')
-        
-        fname = dir_name + 'animation_s' + str(scn) + 't' + str(theta) + '_' + str(i) + '.png' 
-        fig.savefig(fname)
+        ax = pltutil.plot_env(ax)
+
+        ax.plot(pa[:i+1,0], pa[:i+1,1], 'o-', markersize=6, linewidth=1, color=color[0], alpha=0.5, markeredgecolor='none', label='leader')
+        ax.plot(pb[:i+1,0], pb[:i+1,1], '^-', markersize=6, linewidth=1, color=color[2], alpha=0.5, markeredgecolor='none', label='follower')
+
+        ax.xaxis.set_tick_params(labelsize='x-large')
+        ax.yaxis.set_tick_params(labelsize='x-large')
+        ax.legend(fontsize='x-large', loc='lower left')
+        fig.set_figwidth(4.8)
+        fig.savefig('anim/x_'+str(theta)+'_[0. 4]_'+str(i)+'.png', dpi=300)
         plt.close(fig)
 
 
-if __name__ == '__main__':
-    plot_empty_env()    # plot empty environment with initial positions for all robots. (single scenario)
+def plot_no_guide_anim(theta):
+    leader = Leader()
+    pltutil = PlotUtils()
+    x1 = np.load('f2x1.npy')[:30, :]
+    x2 = np.load('f2x2.npy')[:40, :]
+    x3 = np.load('f2x3.npy')[:10, :]
+    for i in range(x1.shape[0]-1):
+        fig, ax = plt.subplots()
+        ax = pltutil.plot_env(ax)
+        ax.plot(x1[:i+1,0], x1[:i+1,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8, label='follower')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.xaxis.set_tick_params(labelsize='large')
+        ax.yaxis.set_tick_params(labelsize='large')
+        #ax.set_title('color map for follower '+str(theta))
+        ax.legend(fontsize='x-large', loc='lower left')
+        fig.savefig('anim/noguide_type_'+str(theta)+'_'+str(i)+'.png')
+        plt.close(fig)
     
-    plot_meta_scn0()    # plot adaptation result for all robots (scenario 0).
-    plot_meta_scn1()    # plot adaptation result for all robots (scenario 1).
-    plot_meta_scn2()    # plot adaptation result for all robots (scenario 2).
-    plot_meta_detail()  # plot two detailed adaptation result (scenario 1 and scenario 2 task 0)
+    for i in range(x2.shape[0]-1):
+        fig, ax = plt.subplots()
+        ax = pltutil.plot_env(ax)
+        ax.plot(x1[:,0], x1[:,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8, label='follower')
+        ax.plot(x2[:i+1,0], x2[:i+1,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.xaxis.set_tick_params(labelsize='large')
+        ax.yaxis.set_tick_params(labelsize='large')
+        #ax.set_title('color map for follower '+str(theta))
+        ax.legend(fontsize='x-large', loc='lower left')
+        fig.savefig('anim/noguide_type_'+str(theta)+'_'+str(i+x1.shape[0])+'.png')
+        plt.close(fig)
+    
+    for i in range(x3.shape[0]-1):
+        fig, ax = plt.subplots()
+        ax = pltutil.plot_env(ax)
+        ax.plot(x1[:,0], x1[:,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8, label='follower')
+        ax.plot(x2[:,0], x2[:,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8)
 
-    plot_no_guide()     # plot no-guidance control result for a specific scenario and task.
-    plot_nometa_scn0()  # plot individual learning for scenario 0.
-    plot_animation()    # plot series of figures to generate gif. (single scenario single task)
-    
+        ax.plot(x3[:i+1,0], x3[:i+1,1], '^-', markersize=7, linewidth=2, color='tab:red', alpha=0.8)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.xaxis.set_tick_params(labelsize='large')
+        ax.yaxis.set_tick_params(labelsize='large')
+        #ax.set_title('color map for follower '+str(theta))
+        ax.legend(fontsize='x-large', loc='lower left')
+        fig.savefig('anim/noguide_type_'+str(theta)+'_'+str(i+x1.shape[0]+x2.shape[0])+'.png')
+        plt.close(fig)
+
+
+def plot_adapt_compare():   # print ave and adapt result
+    import main_ave_largenn, main, main_ave_br
+    leader = Leader()
+    leader.meta = Meta()
+    fig, ax = plt.subplots(2, 3)
+
+    ave_loss = main_ave_br.main()
+    for i in range(leader.meta.total_type):
+        nrow, ncol = i//3, i%3
+        adapt_loss = main.sg_adapt(i)
+        nn_loss = main_ave_largenn.adapt(i)
+        ax[nrow, ncol].plot(adapt_loss, label='adapt')
+        ax[nrow, ncol].plot(nn_loss, label='nn')
+        #ax[nrow, ncol].plot(ave_loss, label='ave')
+        ax[nrow, ncol].set_title('type '+str(i))
+        ax[nrow, ncol].legend()
+    fig.savefig('data/plots/adapt_compare.png')
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    #plot_adapt_curve()
+    plot_adapt_theta(4)
+    #plot_mpc_traj(4)
+    #plot_traj_animation(2)
+    #plot_no_guide_anim(2)
+    #plot_adapt_compare()   # print adaptation results for three methods

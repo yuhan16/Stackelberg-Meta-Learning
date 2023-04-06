@@ -2,80 +2,29 @@
 This repo is for Stackelberg meta-learning project. The underlying application is UAV guiding UGV.
 
 
-## File Structure Specifications
-- `data/`: data directory. Store necessary data including plots and key training data for reference.
-- `logs/`: log directory. Stroe training log for diagnosis.
-- `bash/`: bash scripts to run the algorithm in order to generate log files (redirect output to `logs/`)
-- `requirements.txt`: required python packeges for the project. Installed with `pip`.
-- Python scripts.
-
-### Python Scripts
+## File Specifications
 The following scripts are used for different purposes:
-- `param.py`: definition of problem parameters.
-- `utils_meta.py`: definition of utility functions for executing the algorithm.
-- `main_meta`: main script for sg meta-learning algorithms and implementations for other compared algorithms.
-- `misc_test`: test scripts for different function testing.
+- `param.py`: definitions of problem parameters.
+- `utils.py`: definitions of utility functions for executing the algorithm.
+- `main.py`: main script for sg meta-learning algorithms and implementations for receding horizon planning and other compared algorithms.
+- `main_ave_br`: script to implement parameter-ave learning.
+- `main_ave_largenn:`: script to implement output-ave learning.
+- `main_no_guide`: script to implement zero guidance control.
+- `misc_test.py`: test scripts for different function testings.
 - `plot_figs.py`: functions to plot figures.
-
-### data directory
-We have following sub directories in `data/`:
-- `plots/`: stores simulation plots.
-- `br_data/`: stores pre-sampled uniform BR data for all scenarios.
-  - `br_data/scenario(x)/`: strores pre-sampled BR data for scenario x.
-- `data_meta/`: stores meta learning related data.
-  - `data_meta/scenario(x)/`: stores related data for scenario x, including adapted BR model.
-- `data_nometa`: stores no meta learning related data.
-- `data_noguide`: stores no guidance related data.
-
-### log directory
-The log directory has the same structure as `data/`.
-
-
-## Coding Specifications
-- BR data are organized into numpy array. `D[i,:] = [x, a, br]`
-- Trajectory is stored in a 2d numpy array with axis0 as time index. `x_traj[t, :] = x_t`
-- Use a list to store type-related quantity. `br_list[i]` is the adapted meta model (an NN) for type `i` follower.
-- Trajectories have different time dimension. 
-  - state trajectory `x_traj` has dimension `T+1`. `x_0, ..., x_T`
-  - control input trajectories `a_traj` and `b_traj` have dimension `T`. `a_0, ..., a_{T-1}`
-  - costate trajectory `lam_traj` has dimension `T`. `lam_1, ..., lam_T`
-- Use `brnet` to store parameter value only. Its gradient `.grad` is useless.
-
-
-### Class Specifications
-- Use one global parameter file, which defines type-related information.
-- Five classes to implement different functions: `Leader`, `Follower`, `BRNet`, `Meta`, `Auxiliary`.
-  - `Leader`: compute leader's objective; solve leader's decision problem.
-  - `Follower`: compute follower's objective; compute follower's best response.
-  - `BRNet`: defines the best response NN.
-  - `Meta`: sample and algorithm.
-  - `Auxiliary`: auxiliary functions such as constraint check and simple plot functions for test.
-
-In `Leader` class, we specify some function structures:
-- `solve_oc`: solve the trajectory optimization
-  - `opt_solver`: use optimization solver to obtain the trajectory
-  - `pmp_solver`: use pmp conditions to refine the trajectory
-- `obj_oc`: objective of control cost, same applies to `obj_br`, `obj_L`
-- `grad_obj_oc`: gradient of control cost, same applies to `grad_obj_br`, `grad_obj_L`
-
-In `Meta` class, we specify some function structures:
-- `sample_task_theta`: sample BR data for task theta
-  - `sample_task_theta_traj`: sample BR data for task theta near the trajectory
-  - `sample_task_theta_uniform`: randomly sample BR data for task theta
-- `update_model`: update meta model
-- `update_model_theta`: update intermediate model
-- `train_brnet`: train separate brnet for different followers, designed for individual learning
+- `data/`: data directory. Store necessary data including plots and key training data for reference.
+- `requirements.txt`: required python packeges for the project. See [Installation Instructions](#installation-instructions).
 
 
 ## Installation Instructions
-We use [Pytorch](https://pytorch.org/) to train the neural network model in our framework. 
+We use `Pytorch` to train the neural network model in our approach.
 
 First, create a virtual environment with python virtulenv module.
 ```bash
-$ python -m venv <venv-name>
+$ python3 -m venv <venv-name>
 ```
 
-Second, enter the created virtual environment and install required python packages using `pip` and provided `requirements.txt`:
+Second, enter the created virtual environment and install required python packages using pip and provided requirements.txt:
 ```bash
 $ source /path_to_venv-name/bin/activate    # enter virtual environment 
 (venv-name)$ pip install -r requirements.txt
@@ -83,21 +32,49 @@ $ source /path_to_venv-name/bin/activate    # enter virtual environment
 
 Then you are ready to run all the scripts.
 
-## Running Bash Scripts
-We provide two bash scripts to run the algorithm and redirect the output to `logs/` directory.
-- `sg_meta.sh`: for Stackelberg meta-learning
-- `non_meta.sh`: for individual learning
-Use `bash` command to run the bash script. For example,
-```bash
-$ bash sg_meta.sh
-```
-If there is no need to generate logs, use python command line to run the algorithm. For example,
-```bash
-(venv-name) $ python main_test.py 0   # run algorithm for scenario 0
-```
 
-Note that since we encapsulate different learning algorithms into separate functions in `main_test.py`, we need to **comment unrelated functions when running the bash scripts**. For example, 
-- When running `sg_meta.sh`, only leave function `sg_meta_learn()` in `main_test.py` uncommented.
-- When running `non_meta.sh`, only leave function `individual_learn()` in `main_test.py` uncommented.
+## Coding specifications
 
-We can specify the scenario index in the bash script to run the algorithm for different scenarios.
+To save space, we use `state_dict` to record a neural network.
+
+### obstacle
+Each obstacle is specified by a 6-dim vector: `[xc, yc, rc, norm, x_scale, y_scale]`.
+- If `norm=1`, `x_scale, y_scale` scale the unit width/height `rc`.
+- If `norm=2`, `x_scale, y_scale` scale the radius `rc`.
+- If `norm=-1`, `x_scale, y_scale` scale the unit edge length `rc`.
+The previous scaling notation is easy for plotting. The math representation is scaled by `1/x_scale` and `1/y_scale` respectively.
+
+### BR data
+- BR data are organized into numpy array. `D[i,:] = [x, a, br]`
+- Trajectory is stored in a 2d numpy array with axis0 as time index. `x_traj[t, :] = x_t`
+- Use a list to store type-related quantity. `br_list[i]` is the adapted meta model (an NN) for type i follower.
+  - Trajectories have different time dimension.
+  - state trajectory `x_traj` has dimension T+1. `x_0, ..., x_T`
+  - control input trajectories `a_traj` and `b_traj` have dimension T. `a_0, ..., a_{T-1}`
+  - costate trajectory `lam_traj` has dimension T. `lam_1, ..., lam_T`
+
+
+### Utilities
+- Use one global parameter file, which defines type-related information.
+- Five classes to implement different functions: `Leader`, `Follower`, `BRNet`, `Meta`, `PlotUtils`.
+  - `Leader`: compute leader's objective; solve leader's decision problem.
+  - `Follower`: compute follower's objective; compute follower's best response.
+  - `BRNet`: definition of the best response NN.
+  - `Meta`: sampling and meta-learning algorithm.
+  - `PlotUtils`: plotting functions.
+
+In `Leader` class, we specify some functions:
+- `compute_opt_traj`: solve the parameterized trajectory optimization problem
+  - `initx`: generate initial guess for trajectory optimization problem
+  - `oc_opt`: use optimization solver to obtain the trajectory
+  - `pmp_opt`: use pmp conditions to refine the trajectory
+- `obj_oc`: objective of control cost
+- `grad_obj_oc`: gradient of control cost
+
+In `Meta` class, we specify some functions:
+- sample_task_theta: sample BR data for task theta
+- sample_task_theta_traj: sample BR data for task theta near the trajectory
+- sample_task_theta_uniform: randomly sample BR data for task theta
+- update_model: update meta model
+- update_model_theta: update intermediate model
+- train_brnet: train separate brnet for different followers, designed for individual learning
