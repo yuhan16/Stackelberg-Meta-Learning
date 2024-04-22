@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools >=49.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sg_meta"
+version = "0.0.1"
+description = "Stackelberg meta learning for trajectory guidance tasks."
+readme = "README.md"
+requires-python = ">= 3.9"
+dependencies = [
+    "numpy == 1.24.1", 
+    "scipy == 1.10.0",
+    "torch == 1.12.1",
+]
+
+[project.optional-dependencies]
+visual = ["matplotlib==3.6.3"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sg_meta", "sg_meta.*"]
+
+[tool.setuptools.package-data]
+sg_taskplan = ["*.json"]

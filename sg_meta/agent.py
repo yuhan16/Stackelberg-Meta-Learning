@@ -1,12 +1,10 @@
-"""
-This script implements different functions in the sg meta-learning algorithm.
-"""
-import torch
+import os
+import json
 import numpy as np
 from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import param_settings as param
+import torch
+from .model import BRNet
+from . import config_data_dir
 
 
 class Leader:
@@ -14,14 +12,26 @@ class Leader:
     This class defines the leader's utility functions.
     """
     def __init__(self) -> None:
-        self.rng = param.rng
-        self.dimx, self.dimxa, self.dimxb = param.dimx, param.dimxa, param.dimxb
-        self.dimua, self.dimub = param.dimua, param.dimub
-        self.dimT, self.dt, self.T = param.dimT, param.dt, param.T
-        self.ws_len, self.obs, self.pd = param.ws_len, param.obs, param.pd
-        self.q1, self.q2, self.q3 = param.q1, param.q2, param.q3
-        self.qf1, self.qf2 = param.qf1, param.qf2
+        fname = os.path.join(config_data_dir, 'parameters.json')
+        param = json.load(open(fname))
+
+        self.seed = param['seed']
+        self.rng = np.random.default_rng(self.seed)
+
+        self.ws_len, self.obs, self.pd = param['ws_length'], param['obstacle_settings'], param['destination']
+        
+        self.dimx, self.dimxa, self.dimxb = param['dimx'], param['dimxa'], param['dimxb']
+        self.dimua, self.dimub = param['dimua'], param['dimub']
+        self.dimT, self.dt, self.T = param['dimT'], param['dt'], param['T']     # dimT = T // dt
+
+        self.q1 = np.array(param['leader_cost_matrix']['q1'], dtype=float)
+        self.q2 = np.array(param['leader_cost_matrix']['q2'], dtype=float)
+        self.q3 = np.array(param['leader_cost_matrix']['q3'], dtype=float)
+        self.qf1 = np.array(param['leader_cost_matrix']['qf1'], dtype=float)
+        self.qf2 = np.array(param['leader_cost_matrix']['qf2'], dtype=float)
+        
         self.meta = None
+
     
     def is_safe(self, p):
         """
@@ -41,36 +51,31 @@ class Leader:
             else:
                 if np.linalg.norm(f1, ord=np.inf) <= rc:
                     return False
-            # maybe add ws_len constraints
+            # add ws_len constraints
             if (p[0] < 0 or p[0] > self.ws_len) or (p[1] < 0 or p[1] > self.ws_len):
                 return False
         return True
     
-    def compute_opt_traj(self, br_dict, x_init=None, ua_init=None):
+
+    def compute_opt_traj(self, br_dict, x_init, ua_init):
         """
         This function computes an optimal trajectory using the learned br model.
         br_dict: brnet state dict, not NN model object
         """    
-        if x_init is None:
-            x0 = self.rng.random(self.dimx)
-            # or use other random initial conditions
-            x0_list = np.array(param.x0_list)
-            x0 = x0_list[self.rng.choice(x0_list.shape)]
-            x_init, ua_init = self.init2(x0)
-
-        #x_init, ua_init = self.init2(x0)
         # solve leader's OC problem with optimization and PMP
-        x_opt, ua_opt = self.oc_opt(br_dict, x_init, ua_init)        # directly formulate problem and use opt solver
+        x_opt, ua_opt = self.oc_opt(br_dict, x_init, ua_init)           # directly formulate problem and use opt solver
         if self.obj_oc(x_opt, ua_opt) <= 1e5:
-            x_pmp, ua_pmp = self.oc_pmp(br_dict, x_opt, ua_opt)          # use PMP to refine the trajectory
+            x_pmp, ua_pmp = self.oc_pmp(br_dict, x_opt, ua_opt)         # use PMP to refine the trajectory
         else:
-            x_pmp, ua_pmp = self.oc_pmp(br_dict, x_init, ua_init)         # directly use x_init to refine the trajectory
+            x_pmp, ua_pmp = self.oc_pmp(br_dict, x_init, ua_init)       # directly use x_init to refine the trajectory
 
         print("opt_traj = {}, pmp_traj = {}".format(self.obj_oc(x_opt, ua_opt), self.obj_oc(x_pmp, ua_pmp)))
+        
         # if self.obj_oc(x_opt, ua_opt) <= self.obj_oc(x_pmp, ua_pmp):
         #     x_traj, ua_traj = x_opt, ua_opt
         # else:
         #     x_traj, ua_traj = x_pmp, ua_pmp
+        
         if self.obj_oc(x_pmp, ua_pmp) is np.nan or self.obj_oc(x_pmp, ua_pmp) > 1e5:
             if self.obj_oc(x_pmp, ua_pmp) < 1e5:
                 x_traj, ua_traj = x_opt, ua_opt
@@ -80,6 +85,7 @@ class Leader:
         else:
             x_traj, ua_traj = x_pmp, ua_pmp
         return x_traj, ua_traj
+
 
     def oc_opt(self, br_dict, x_init, ua_init):
         """
@@ -108,7 +114,6 @@ class Leader:
                 a_t = X[i_a: i_a+self.dimua]
                 jac[i, i_a: i_a+self.dimua] = 2 * a_t
             return jac
-            #return csr_matrix(jac)
         constr.append( NonlinearConstraint(con_a, np.zeros(self.dimT), np.ones(self.dimT), jac=jac_con_a) )
 
         # safety cosntraints |pA_t-obs_j| >= d_j and |pB_t-obs_j| >= d_j
@@ -166,7 +171,6 @@ class Leader:
             jac = np.vstack( (jac_a,jac_b) )
             jac = jac_a     # only for pa
             return jac
-            #return csr_matrix(jac)
         eps = 5e-1      # for numerical reasons
         #lb_d = np.kron(np.ones(self.dimT*2), np.array(self.obs)[:, 2]+eps)
         #ub_d = np.inf*np.ones(self.dimT*2*len(self.obs))
@@ -289,6 +293,7 @@ class Leader:
         x_opt, ua_opt = result.x[: idx], result.x[idx: ]
         x_opt = np.concatenate((x0, x_opt))     # add x0 to trajectory
         return x_opt.reshape((self.dimT+1, self.dimx)), ua_opt.reshape((self.dimT, self.dimua))
+
 
     def oc_pmp(self, br_dict, x_init, ua_init):
         """
@@ -466,6 +471,7 @@ class Leader:
                 print('-- pmp iter {}, leader cost: {:.5f}, |dua|: {:.3e}, |dH|: {:.5f}'.format(i+1, self.obj_oc(x_traj, ua_traj), ua_diff, np.linalg.norm(dH, axis=1).max()))
         return x_traj, ua_traj
 
+
     def obj_oc(self, x_traj, ua_traj):
         """
         This function computes the leader's control cost given trajectories.
@@ -482,6 +488,7 @@ class Leader:
                 cost += (pa - pb) @ self.q2 @ (pa - pb)
             cost += ua_traj[i, :] @ self.q3 @ ua_traj[i, :]
         return cost
+
 
     def grad_obj_oc(self, x_traj, ua_traj):
         """
@@ -501,10 +508,11 @@ class Leader:
             grad_a[i, :] = 2 * self.q3 @ ua_traj[i, :]
         # or return other forms
         return grad_x, grad_a
-        
+    
+
     def init1(self, x0=None): 
         """
-        initialize x_traj by finding projection. compute a_traj. phi is gradient
+        initialize x_traj and ua_traj by finding projection. compute a_traj. phi is gradient
         """
         def project_x(p):
             """
@@ -582,9 +590,10 @@ class Leader:
         x_traj = np.hstack((xa, xb))    # dim=0 is time horizon
         return x_traj, ua_traj
     
+
     def init2(self, x0=None):
         """
-        initialize x_traj by solving an simplified oc. compute a_traj. phi is gradient.
+        initialize x_traj and ua_traj by solving an simplified oc. compute a_traj. phi is gradient.
         Treat leader/follower as a single integrator. Obj is |p-pd|+|u|. Position constraints.
         X = [x1, x2, ..., u1, u2, ...]
         """
@@ -608,7 +617,7 @@ class Leader:
                 a_t = X[i_a: i_a+self.dimua]
                 f[i] = a_t @ a_t
             return f
-        constr.append(  NonlinearConstraint(con_a, np.zeros(self.dimT), 2*np.ones(self.dimT)) )
+        constr.append( NonlinearConstraint(con_a, np.zeros(self.dimT), 2*np.ones(self.dimT)) )
         def con_obs(X):
             obs_num = len(self.obs)
             f = np.zeros(self.dimT*obs_num)
@@ -697,12 +706,14 @@ class Leader:
         x_traj = np.hstack( (xa_traj, np.hstack( (xb_traj,phi_traj))) )
         return x_traj, ua_traj
 
+
     def get_br(self, br, x, a):
         """
         This function converts (x,a) to torch tensor and returns br(x,a) to numpy array. Make codes more concise.
         """
         return br(self.to_torch(x), self.to_torch(a)).detach().numpy().astype(float)
-    
+
+
     def get_br_jac(self, br, x, a):
         """
         This function converts (x,a) to torch tensor and returns the jacobian of br(x,a) w.r.t. (x,a) to numpy array. 
@@ -710,7 +721,8 @@ class Leader:
         """
         jac_x, jac_a = br.compute_input_jac(self.to_torch(x), self.to_torch(a))
         return jac_x.numpy().astype(float), jac_a.numpy().astype(float)
-    
+
+
     def to_torch(self, x):
         """
         This function convert numpy data array x to the torch tensor.
@@ -719,17 +731,23 @@ class Leader:
         #return torch.from_numpy(x).float()
 
 
+
 class Follower:
     """
     This class defines the follower's utility functions.
     """
     def __init__(self, theta) -> None:
-        self.dimx, self.dimxa, self.dimxb = param.dimx, param.dimxa, param.dimxb
-        self.dimua, self.dimub = param.dimua, param.dimub
-        self.dt = param.dt
-        self.ws_len, self.obs, self.pd = param.ws_len, param.obs, param.pd
-        self.coeff = param.get_follower_param(theta)
+        fname = os.path.join(config_data_dir, 'parameters.json')
+        param = json.load(open(fname))
+        
+        self.ws_len, self.obs, self.pd = param['ws_length'], param['obstacle_settings'], param['destination']
+        
+        self.dimx, self.dimxa, self.dimxb = param['dimx'], param['dimxa'], param['dimxb']
+        self.dimua, self.dimub = param['dimua'], param['dimub']
+        self.dt = param['dt']
+        self.coeff = param['follower_cost_coefficient'][f'type{theta}']
     
+
     def is_safe(self, p):
         """
         This function checks the safety constraints. obstacle collision, outside working space.
@@ -753,6 +771,7 @@ class Follower:
                 return False
         return True
 
+
     def dynamics(self, x, ua, ub):
         """
         This function defines the system dynamics. The follower first make turns then move forward.
@@ -761,6 +780,7 @@ class Follower:
         x_new = x + self.dt * np.concatenate( (ua, fb(x,ub) @ ub) )
         return x_new
     
+
     def compute_J(self, x, ua, ub):
         """
         This function computes follower's cost. 
@@ -768,7 +788,8 @@ class Follower:
         """
         x_new = self.dynamics(x, ua, ub)
         pa_new, pb_new = x_new[:self.dimxa], x_new[self.dimxa:-1]
-        mu = 10
+        mu = 10     # barrier parameter
+
         J = 0
         J += self.coeff[0] * (pb_new-self.pd) @ (pb_new-self.pd)    # destination cost
         J += self.coeff[1] * (pa_new-pb_new) @ (pa_new-pb_new)      # guidance cost
@@ -792,9 +813,10 @@ class Follower:
                 return np.inf
             if self.coeff[3]*(f2-rc) <= 1:
                 J_obs -= np.log(self.coeff[3]*(f2-rc))
-        J += J_obs * mu     # increase cost
+        J += J_obs * mu
         return J
     
+
     def compute_dJ(self, x, ua, ub):
         """
         This function computes the jacobian of the follower's cost w.r.t. ub.
@@ -804,9 +826,9 @@ class Follower:
         """
         x_new = self.dynamics(x, ua, ub)
         pa_new, pb_new, phib_new = x_new[:self.dimxa], x_new[self.dimxa:-1], x_new[-1]
-        mu = 10
+        mu = 10     # barrier parameter
         dpbnew_dub = np.array([[np.cos(phib_new), -np.sin(phib_new)*self.dt*ub[0]], [np.sin(phib_new), np.cos(phib_new)*self.dt*ub[0]]]) * self.dt
-        #dd = np.array([[np.cos(phib_new), -np.sin(phib_new)], [np.sin(phib_new), np.cos(phib_new)]]) @ np.diag([self.dt, (self.dt**2)*ub[0]])
+        
         dJ = np.zeros(self.dimub)
         dJ += 2 * self.coeff[0] * (pb_new-self.pd) @ dpbnew_dub    # jac of destination cost
         dJ += 2 * self.coeff[1] * (pa_new-pb_new) @ (-dpbnew_dub)  # jac of guidance cost
@@ -833,7 +855,7 @@ class Follower:
                     idx = np.argmax(np.abs(f1))
                     tmp[idx] = np.sign(f1[idx])
                     dJ_obs -= 1/(f2-rc) * tmp @ Lam @ dpbnew_dub            # for linf norm
-        dJ += dJ_obs * mu   # increase cost
+        dJ += dJ_obs * mu
         """
         # check gradient using forward prediction
         eps=1.4901161193847656e-08
@@ -844,6 +866,7 @@ class Follower:
         """
         return dJ
     
+
     def get_br(self, x, ua):
         """
         This function computes the best response given the current state x and the leader's control ua.
@@ -855,6 +878,7 @@ class Follower:
             return self.compute_dJ(x, ua, ub)
         
         lc1 = LinearConstraint(np.eye(self.dimub), np.array([-0.,-1.]), np.array([1.,1.]))   # [-1,-1] <= (vB,wB) <= [1,1]
+
         # run multiple optimization to get a better local optimal solution
         ITER = 10
         J_list, ub_list = np.zeros(ITER), np.zeros((ITER, self.dimub))
@@ -880,586 +904,3 @@ class Follower:
         """
         return ub_opt
         
-
-class Meta(Leader):
-    """
-    This function defines meta-learning related functions. Inherited from the Leader class
-    """
-    def __init__(self) -> None:
-        super().__init__()
-        self.total_type = param.total_type
-        self.type_pdf = param.type_pdf
-        self.alp, self.beta, self.mom = param.alp, param.beta, param.mom
-        self.kappa = param.kappa
-
-    def sample_tasks(self, N):
-        """
-        This function samples N types of followers using the type distribution.
-        """
-        return np.random.choice(self.total_type, N, p=self.type_pdf)
-    
-    def sample_task_theta(self, theta, data_rand, data_obs, N=10):
-        """
-        This function samples N br data points for type theta follower.
-        br data point: [x, ua, br(x,ua)]
-        D = [D_rand, D_obs], |D_rand| / |D_obs| = kappa.
-        """
-        n_obs = N // (self.kappa+1)
-        n_rand = N - n_obs
-        if n_rand > data_rand.shape[0] or n_obs > data_obs.shape[0]:
-            raise Exception("Required data size larger than the existing data set.")
-        D_r = self.sample_task_theta_random(theta, data_rand, N=n_rand)
-        D_o = self.sample_task_theta_obs(theta, data_obs, N=n_obs)
-        task_data = np.vstack( (D_r, D_o) )
-        self.rng.shuffle(task_data)
-        return task_data
-        
-    def sample_task_theta_random(self, theta, data=[], N=10):
-        """
-        This function samples br data from given data set or generates new br data using randomly generated x_traj and a_traj.
-        """
-        task_data = []
-        if len(data) == 0:   # data set empty, generate new data
-            rng = np.random.default_rng(seed=None)  # or use leader's global rng
-            follower = Follower(theta)
-            for i in range(N):
-                # sample pa, pb in the square working space but not in side the obstacle
-                # pb should be within certain distance of pa. large divication makes no sense.
-                while True:
-                    pa = rng.random(self.dimxa) * self.ws_len
-                    if self.is_safe(pa):
-                        break
-                while True:
-                    pb = rng.normal(pa, scale=1.5, size=(self.dimxb-1))     # pb is near pa, control scale
-                    #pb = rng.random(self.dimxb-1) * self.ws_len
-                    if follower.is_safe(pb):
-                        break
-                phib = (rng.random(1)-0.5) * np.pi      # phib in [-pi, pi]
-                x = np.concatenate((pa, pb, phib))
-               
-                ua = rng.random(self.dimua) * 2 - 1     # sample ua, |ua| <= 1
-                if np.linalg.norm(ua) > 1:
-                    ua = ua / np.linalg.norm(ua)
-
-                br = follower.get_br(x, ua)
-                task_data.append( np.concatenate((x, ua, br)) )
-            task_data = np.vstack(task_data)     # task_data[i, :] = [x, a, br]
-        else:   # sample from data set
-            if data.shape[0] < N:
-                raise Exception("Sample size greater than the given data size. Change sample size N.")
-            idx = self.rng.choice(data.shape[0], N, replace=False)
-            task_data = data[idx, :]
-        return task_data
-    
-    def sample_task_theta_obs(self, theta, data=[], N=10):
-        """
-        This function samples br data near the obstacle. Sample the region {p: rc <= |Lam (p-p_obs)| <= 2*rc}
-        """
-        task_data = []
-        if len(data) == 0:  # data set empty, generate new data
-            rng = np.random.default_rng(seed=None)  # or use leader's global rng
-            follower = Follower(theta)
-            for i in range(len(self.obs)):
-                obs_i = self.obs[i]
-                xc, yc, rc = obs_i[0], obs_i[1], obs_i[2]
-                x_scale, y_scale = obs_i[4], obs_i[5]
-                Lam = np.diag([1/x_scale, 1/y_scale])
-                data_obs = []
-                for j in range( int(np.ceil(N/len(self.obs))) ):
-                    # sample pa, pb in |Lam (p-p_obs)| <= 2*rc
-                    while True:     # find pa
-                        pa = rng.random(self.dimxa) * (2*rc*np.array([x_scale, y_scale])) + np.array([xc, yc])
-                        f1 = Lam @ (pa - np.array([xc, yc]))
-                        if obs_i[3] == 1:
-                            f2 = np.linalg.norm(f1, ord=1)
-                        elif obs_i[3] == 2:
-                            f2 = np.linalg.norm(f1, ord=2)
-                        else:
-                            f2 = np.linalg.norm(f1, ord=np.inf)
-                        if self.is_safe(pa) and f2 <= 2*rc:
-                            break
-                    while True:     # find pb
-                        pb = rng.normal(pa, scale=1, size=(self.dimxb-1))     # pb is near pa, control scale
-                        f1 = Lam @ (pb - np.array([xc, yc]))
-                        if obs_i[3] == 1:
-                            f2 = np.linalg.norm(f1, ord=1)
-                        elif obs_i[3] == 2:
-                            f2 = np.linalg.norm(f1, ord=2)
-                        else:
-                            f2 = np.linalg.norm(f1, ord=np.inf)
-                        if self.is_safe(pb) and f2 <= 2*rc:
-                            break
-                    phib = (rng.random(1)-0.5) * np.pi      # phib in [-pi, pi]
-                    x = np.concatenate((pa, pb, phib))
-                    ua = rng.random(self.dimua) * 2 - 1     # sample ua, |ua| <= 1
-                    if np.linalg.norm(ua) > 1:
-                        ua = ua / np.linalg.norm(ua)
-                    br = follower.get_br(x, ua)
-                    data_obs.append( np.concatenate((x, ua, br)) )
-                task_data.append( np.vstack(data_obs) )
-            task_data = np.vstack(task_data)
-            task_data[rng.choice(task_data.shape[0], N, replace=False), :]    # task_data size may exceed N due to ceil()
-        else: 
-            if data.shape[0] < N:
-                raise Exception("Sample size greater than the given data size. Change sample size N.")
-            idx = self.rng.choice(data.shape[0], N, replace=False)
-            task_data = data[idx, :]
-            """
-            k = N // 2  # sample k nearest br data for each obstacle
-            for i in range(len(self.obs)):
-                obs_i = self.obs[i]
-                xc, yc, rc = obs_i[0], obs_i[1], obs_i[2]
-                tmpa = data[:, :self.dimxa] - np.kron(np.ones((data.shape[0],1)), np.array([xc, yc]))
-                tmpb = data[:, self.dimxa: self.dimx-1] - np.kron(np.ones((data.shape[0],1)), np.array([xc, yc]))
-                if obs_i[3] == 1:
-                    tmpa = np.linalg.norm(tmpa, ord=1, axis=1)
-                    tmpb = np.linalg.norm(tmpb, ord=1, axis=1)
-                elif obs_i[3] == 2:
-                    tmpa = np.linalg.norm(tmpa, ord=2, axis=1)
-                    tmpb = np.linalg.norm(tmpb, ord=2, axis=1)
-                else:
-                    tmpa = np.linalg.norm(tmpa, ord=np.inf, axis=1)
-                    tmpb = np.linalg.norm(tmpb, ord=np.inf, axis=1)
-                if tmpa.shape[0] > k:
-                    idx = np.argsort(tmpa+tmpb)[: k]
-                    task_data.append( data[idx, :] )
-                else:
-                    task_data.append(data)
-            task_data = np.vstack(task_data)
-        # sample N br data from task_data
-        if task_data.shape[0] < N:
-            raise Exception("Sampled data less than the requirement. Change k.")
-            """
-        return task_data
-
-    def sample_task_theta_traj(self, theta, x_traj, a_traj, data=[], N=10):
-        """
-        This function samples br data near the given x_traj and a_traj.
-        """
-        if len(data) == 0:
-            raise Exception("Data set empty for sampling near the trajectory.")
-        if data.shape[0] < N:
-            raise Exception("Sample size greater than the given data size. Change sample size N.")
-        
-        task_data = []
-        for t in range(self.dimT):
-            x_t, a_t = x_traj[t], a_traj[t]
-            # sample k nearest (measured by l2 norm) br data in the data set
-            k = N // 2 #10
-            tmp = data[:, :self.dimx+self.dimua] - np.kron( np.ones((data.shape[0],1)), np.concatenate((x_t,a_t)) )
-            tmp = np.linalg.norm(tmp, axis=1)
-            if tmp.shape[0] > k:
-                idx = np.argsort(tmp)[: k]
-                task_data.append( data[idx, :] )
-            else:
-                task_data.append(data)
-        task_data = np.vstack(task_data)
-        # sample N br data from task_data
-        if task_data.shape[0] < N:
-            raise Exception("Sampled data less than the requirement. Change k.")
-        idx = self.rng.choice(task_data.shape[0], N, replace=False)
-        task_data = data[idx, :]
-        return task_data
-    
-    def update_br_theta(self, br_dict, data):
-        """
-        This function updates the inner meta-learning problem for type theta follower.
-        Perform one-step GD using given data. The momentum in SGD is useless for one-step GD
-        """
-        x, ua, ub = data[:, :self.dimx], data[:, self.dimx: self.dimx+self.dimua], data[:, self.dimx+self.dimua:]
-        x, ua, ub = self.to_torch(x), self.to_torch(ua), self.to_torch(ub)
-        br = BRNet()
-        br.load_state_dict(br_dict)
-        loss_fn = torch.nn.MSELoss(reduction='mean')
-        loss = loss_fn(br(x,ua), ub) *(self.dimx+self.dimua)
-        optimizer = torch.optim.SGD(br.parameters(), lr=self.alp, momentum=0*self.mom)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        return br.state_dict()
-        
-    def update_br_meta(self, task_sample, br_k_dict, br_in_list, data_list, mom_dict):
-        """
-        This function updates the outer meta-learning problem.
-        br_in_list contains the intermediate br parameters for different theta (according to task_sample).
-        """
-        def compute_accumulated_grad_dict(grad_list):
-            """
-            This function computes the accumulated gradient for brnet given a gradient list.
-            """
-            br = BRNet()
-            dp = br.get_zero_grad_dict()
-            for i in range(len(grad_list)):
-                for key in dp.keys():
-                    dp[key] += grad_list[i][key]
-            return dp
-        
-        grad_list = []
-        loss_fn = torch.nn.MSELoss(reduction='mean')
-        for i in range(len(task_sample)):
-            theta = task_sample[i]
-            data_theta = data_list[i]
-            br_in_theta = br_in_list[i]
-
-            # compute accumulated gradient
-            x, ua, ub = data_theta[:, :self.dimx], data_theta[:, self.dimx: self.dimx+self.dimua], data_theta[:, self.dimx+self.dimua:]
-            x, ua, ub = self.to_torch(x), self.to_torch(ua), self.to_torch(ub)
-            br = BRNet()
-            br.load_state_dict(br_in_theta)
-            loss = loss_fn(br(x,ua), ub) *(self.dimx+self.dimua)
-            loss.backward()
-            grad_list.append( br.get_grad_dict() )
-        # one-step gradient update with sgd
-        dp = compute_accumulated_grad_dict(grad_list)
-        br_kp1_dict = br_k_dict.copy()
-        for key in br_kp1_dict.keys():
-            mom_dict[key] = self.mom * mom_dict[key] + (dp[key]/len(task_sample))       # update momentum
-            br_kp1_dict[key] = br_k_dict[key] - self.beta * mom_dict[key]
-        return br_kp1_dict   # No need to return mom_dict because python changes dictionary directly.
-
-    def compute_meta_cost_theta(self, br_dict, data):
-        """
-        This function computes the meta cost given data and trained brnet.
-        """
-        x, ua, ub = data[:, :self.dimx], data[:, self.dimx: self.dimx+self.dimua], data[:, self.dimx+self.dimua:]
-        x, ua, ub = self.to_torch(x), self.to_torch(ua), self.to_torch(ub)
-        br = BRNet()
-        br.load_state_dict(br_dict)
-        loss_fn = torch.nn.MSELoss(reduction='mean')
-        loss = loss_fn(br(x,ua), ub) *(self.dimx+self.dimua)
-        return loss.item()
-
-
-class BRNet(torch.nn.Module):   # 2 hidden layers
-    """
-    BRNet class defines and trains a NN for BR model.
-    """
-    def __init__(self) -> None:
-        torch.set_default_dtype(torch.float64)
-        super(BRNet, self).__init__()
-        self.dimx = param.dimx
-        self.dimua = param.dimua
-        self.dimub = param.dimub
-        #self.device = 'cpu'
-        
-        self.linear1 = torch.nn.Linear(self.dimx+self.dimua, 25)
-        self.linear2 = torch.nn.Linear(25, 25)
-        self.linear3 = torch.nn.Linear(25, self.dimub)
-        self.activation = torch.nn.ReLU()   # or tanh or sigmoid
-        
-        # random initialization 
-        self.linear1.weight.data.normal_(mean=0., std=.1)
-        self.linear1.bias.data.normal_(0., .1)
-        self.linear2.weight.data.normal_(0, .1)
-        self.linear2.bias.data.normal_(0, .1)
-        self.linear3.weight.data.normal_(0, .1)
-        self.linear3.bias.data.normal_(0, .1)
-        
-        # constant initialization for testing
-        # self.linear1.weight.data.fill_(.1)     
-        # self.linear1.bias.data.fill_(.1)
-        # self.linear2.weight.data.fill_(.1)
-        # self.linear2.bias.data.fill_(.1)
-        # self.linear3.weight.data.fill_(.1)
-        # self.linear3.bias.data.fill_(.1)
-        
-    def forward(self, x, a):
-        if x.ndim > 1:
-            y = torch.cat((x, a), dim=1)
-        else:
-            y = torch.cat((x, a), dim=0)
-        y = self.linear1(y)
-        y = self.activation(y)
-        y = self.linear2(y)
-        y = self.activation(y)
-        y = self.linear3(y)
-        #y = self.normalize(y); y = self.linear4(y)
-        return y
-    
-    def compute_input_jac(self, x, a):
-        """
-        This function computes the jacobian of brnet w.r.t. input x and a.
-        """
-        # register hook for inner layer outpuut
-        y = []  # y[i] is a 2d array
-        def forward_hook(model, input, output):
-            y.append( output.detach() )
-        h1 = self.linear1.register_forward_hook(forward_hook)
-        h2 = self.linear2.register_forward_hook(forward_hook)
-        h3 = self.linear3.register_forward_hook(forward_hook)
-        _ = self.forward(x, a)
-        h1.remove()
-        h2.remove()
-        h3.remove()
-        
-        def d_activation(y):
-            """
-            This function computes derivative of activation functions. can be relu, tanh, sigmoid.
-            Input is a 1d array, output is nxn matrix.
-            """
-            #df = torch.diag(1 - torch.tanh(y)**2)  # for tanh(x)
-            df = torch.diag(1. * (y > 0))           # for relu(x)
-            return df
-        def d_normalize(y):
-            """
-            This function computes the derivative of normalization functions. can be sigmoid, tanh.
-            """
-            df = torch.diag(y*(1-y))    # for sigmoid, need dot product
-            #df = torch.diag(1-y**2)     # for tanh
-            return df
-        p = self.state_dict()
-        jac_x = p['linear3.weight'] @ d_activation(y[1]) @ p['linear2.weight'] @ d_activation(y[0]) @ p['linear1.weight'][:, : self.dimx]
-        jac_a = p['linear3.weight'] @ d_activation(y[1]) @ p['linear2.weight'] @ d_activation(y[0]) @ p['linear1.weight'][:, self.dimx: ]
-        return jac_x, jac_a
-    
-    def get_grad_dict(self):
-        dp_dict = {}
-        for n, p in self.named_parameters():
-            dp_dict[n] = p.grad.detach().cpu()
-        return dp_dict
-
-    def get_zero_grad_dict(self):
-        dp_dict = {} 
-        for n, p in self.named_parameters():
-            dp_dict[n] = torch.zeros_like(p.data)
-        return dp_dict
-
-    def get_intermediate_output(self, x, a):
-        """
-        This function gets the output of every Linear layer.
-        """
-        y = []
-        def forward_hook(model, input, output):
-            y.append( output.detach() )
-        h1 = self.linear1.register_forward_hook(forward_hook)
-        h2 = self.linear2.register_forward_hook(forward_hook)
-        h3 = self.linear3.register_forward_hook(forward_hook)
-        _ = self.forward(x, a)
-        h1.remove()
-        h2.remove()
-        h3.remove()
-        return y 
-    
-
-class BRNet1(torch.nn.Module):  # 1 hidden layer
-    """
-    BRNet class defines and trains a NN for BR model.
-    """
-    def __init__(self) -> None:
-        torch.set_default_dtype(torch.float64)
-        super(BRNet1, self).__init__()
-        self.dimx = param.dimx
-        self.dimua = param.dimua
-        self.dimub = param.dimub
-        #self.device = 'cpu'
-        
-        self.linear1 = torch.nn.Linear(self.dimx+self.dimua, 15)
-        self.linear2 = torch.nn.Linear(15, self.dimub)
-        self.activation = torch.nn.ReLU()   # or tanh or sigmoid
-        
-        # random initialization 
-        self.linear1.weight.data.normal_(mean=0., std=.1)
-        self.linear1.bias.data.normal_(0., .1)
-        self.linear2.weight.data.normal_(0, .1)
-        self.linear2.bias.data.normal_(0, .1)
-        
-        # constant initialization for testing
-        # self.linear1.weight.data.fill_(.1)     
-        # self.linear1.bias.data.fill_(.1)
-        # self.linear2.weight.data.fill_(.1)
-        # self.linear2.bias.data.fill_(.1)
-        
-    def forward(self, x, a):
-        if x.ndim > 1:
-            y = torch.cat((x, a), dim=1)
-        else:
-            y = torch.cat((x, a), dim=0)
-        y = self.linear1(y)
-        y = self.activation(y)
-        y = self.linear2(y)
-        return y
-    
-    def compute_input_jac(self, x, a):
-        """
-        This function computes the jacobian of brnet w.r.t. input x and a.
-        """
-        # register hook for inner layer outpuut
-        y = []  # y[i] is a 2d array
-        def forward_hook(model, input, output):
-            y.append( output.detach() )
-        h1 = self.linear1.register_forward_hook(forward_hook)
-        _ = self.forward(x, a)
-        h1.remove()
-        
-        def d_activation(y):
-            """
-            This function computes derivative of activation functions. can be relu, tanh, sigmoid.
-            Input is a 1d array, output is n x n matrix.
-            """
-            #df = torch.diag(1 - torch.tanh(y)**2)  # for tanh(x)
-            df = torch.diag(1. * (y > 0))           # for relu(x)
-            return df
-        p = self.state_dict()
-        jac_x = p['linear2.weight'] @ d_activation(y[0]) @ p['linear1.weight'][:, : self.dimx]
-        jac_a = p['linear2.weight'] @ d_activation(y[0]) @ p['linear1.weight'][:, self.dimx: ]
-        return jac_x, jac_a
-    
-    def get_grad_dict(self):
-        dp_dict = {}
-        for n, p in self.named_parameters():
-            dp_dict[n] = p.grad.detach().cpu()
-        return dp_dict
-
-    def get_zero_grad_dict(self):
-        dp_dict = {} 
-        for n, p in self.named_parameters():
-            dp_dict[n] = torch.zeros_like(p.data)
-        return dp_dict
-
-    def get_intermediate_output(self, x, a):
-        """
-        This function gets the output of every Linear layer.
-        """
-        y = []
-        def forward_hook(model, input, output):
-            y.append( output.detach() )
-        h1 = self.linear1.register_forward_hook(forward_hook)
-        _ = self.forward(x, a)
-        h1.remove()
-        return y 
-
-
-class PlotUtils:
-    """
-    This class defines plotting related functions.
-    """
-    def __init__(self) -> None:
-        self.ws_len = param.ws_len
-        self.obs = param.obs
-        self.pd = param.pd
-    
-    def plot_env1(self):
-        """
-        This function plots the simulation environments.
-        """
-        fig, ax = plt.subplots()
-        #fig.set_figwidth(4.8)
-        ax = self.plot_obs(ax)
-        print(fig.get_figwidth, fig.get_figheight)
-        
-        im = plt.imread('data/dest-logo.png')
-        ax.imshow(im, extent=(8.5,9.5,8.5,9.5), zorder=-1)
-        
-        ax.set_xlim(0, 10.1)
-        ax.set_ylim(0, 10.1)
-        ax.set_aspect(1)
-        ax.xaxis.set_tick_params(labelsize='large')
-        ax.yaxis.set_tick_params(labelsize='large')
-        # return ax
-        
-        fig.savefig('tmp/tmp1.png', dpi=100)
-        plt.close(fig)
-
-    def plot_env(self, ax):
-        """
-        This function plots the simulation environments.
-        """
-        ax = self.plot_obs(ax)
-        im = plt.imread('data/dest-logo.png')
-        ax.imshow(im, extent=(8.4,9.6,8.4,9.6), zorder=-1)
-        
-        ax.set_xlim(0, 10.1)
-        ax.set_ylim(0, 10.1)
-        ax.set_aspect(1)
-        ax.xaxis.set_tick_params(labelsize='large')
-        ax.yaxis.set_tick_params(labelsize='large')
-        return ax
-    
-    def plot_obs(self, ax):
-        """
-        This function plots the obstacles.
-        """
-        def plot_l1_norm(ax, obs):      # plot l1 norm ball, a diamond
-            xc, yc, rc = obs[0], obs[1], obs[2]
-            x_scale, y_scale = obs[4], obs[5]
-            # compute half width and height, construct vertex array
-            width, height = rc*x_scale, rc*y_scale
-            xy = [[xc, yc+height], [xc-width, yc], [xc, yc-height], [xc+width, yc]]
-            p = mpatches.Polygon(np.array(xy), closed=True, ec='k', fc='0.9', fill=True, ls='--', lw=2)
-            ax.add_patch(p)
-            return ax
-        
-        def plot_l2_norm(ax, obs):      # plot l2 norm ball, an ellipse
-            xc, yc, rc = obs[0], obs[1], obs[2]
-            x_scale, y_scale = obs[4], obs[5]
-            # compute width and height
-            width, height = 2*rc*x_scale, 2*rc*y_scale
-            p = mpatches.Ellipse((xc, yc), width, height, ec='k', fc='0.9', fill=True, ls='--', lw=2)
-            ax.add_patch(p)
-            return ax
-        
-        def plot_linf_norm(ax, obs):    # plot linf norm ball, a rectangle
-            xc, yc, rc = obs[0], obs[1], obs[2]
-            x_scale, y_scale = obs[4], obs[5]
-            # compute x0, y0, width, and height
-            width, height = 2*rc*x_scale, 2*rc*y_scale
-            x0, y0 = xc-width/2, yc-height/2
-            p = mpatches.Rectangle((x0,y0), width, height, ec='k', fc='0.9', fill=True, ls='--', lw=2)
-            ax.add_patch(p)
-            return ax            
-
-        obs_num = len(self.obs)
-        for i in range(obs_num):
-            obs_i = self.obs[i]
-            if obs_i[3] == 1:
-                ax = plot_l1_norm(ax, obs_i)
-            elif obs_i[3] == 2:
-                ax = plot_l2_norm(ax, obs_i)
-            else:
-                ax = plot_linf_norm(ax, obs_i)
-        return ax
-    
-    def plot_traj(self, x_traj):
-        """
-        This function plots the trajectory.
-        """
-        fig, ax = plt.subplots()
-        ax = self.plot_env(ax)
-        if x_traj.shape[1] <= 2:
-            pa = x_traj[:, 0:2]
-            ax.plot(pa[:,0], pa[:,1], 'o')
-        else:
-            pa = x_traj[:, 0:2]
-            pb = x_traj[:, 2:4]
-            ax.plot(pa[:,0], pa[:,1], 'o')
-            ax.plot(pb[:,0], pb[:,1], 's')
-        fig.savefig('tmp/tmp3.png', dpi=100)
-        plt.close(fig)
-    
-    def plot_follower_pos(self, xb):
-        """
-        This function plots the follower's state, including the position and angle.
-        """
-        pb, phib = xb[:-1], xb[-1] 
-        dx, dy = 0.5*np.cos(phib), 0.5*np.sin(phib)
-        
-        fig, ax = plt.subplots()
-        ax = self.plot_env(ax)
-        ax.plot(pb[0], pb[1], 'ro')
-        ax.arrow(pb[0],pb[1], dx,dy, color='r', head_length=0.2, head_width=0.2)
-        fig.savefig('tmp/tmp6.png')
-        plt.close(fig)
-
-    def plot_leader_follower_pos(self, x):
-        """
-        This function plots the leader and follower's state.
-        """
-        pa, pb, phib = x[0:2], x[2:4], x[-1]
-        dx, dy = 0.5*np.cos(phib), 0.5*np.sin(phib)
-        fig, ax = plt.subplots()
-        ax = self.plot_env(ax)
-        ax.plot(pa[0], pa[1], 'b^')
-        ax.plot(pb[0], pb[1], 'ro')
-        ax.arrow(pb[0],pb[1], dx,dy, color='r', head_length=0.2, head_width=0.2)
-        fig.savefig('tmp/tmp6.png')
-        plt.close(fig)
